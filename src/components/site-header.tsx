@@ -7,7 +7,7 @@ export async function SiteHeader() {
   const session = await getSession();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-line/70 bg-bg/80 backdrop-blur-xl">
+    <header className="chrome sticky top-0 z-50">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5">
         <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
           <span className="grid size-6 place-items-center rounded-lg bg-accent text-accent-ink">

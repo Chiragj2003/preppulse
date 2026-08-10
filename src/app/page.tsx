@@ -20,12 +20,12 @@ export default async function HomePage() {
           <span className="size-1.5 rounded-full bg-positive" />
           A new topic every day
         </p>
-        <h1 className="mx-auto max-w-2xl text-[clamp(2.25rem,6vw,3.75rem)] leading-[1.04] font-semibold">
+        <h1 className="t-display mx-auto max-w-2xl">
           Speak better,
           <br />
           two minutes at a time.
         </h1>
-        <p className="mx-auto mt-5 max-w-xl text-[17px] leading-relaxed text-ink-soft">
+        <p className="t-lead mx-auto mt-5 max-w-xl text-ink-soft">
           Roll a topic you didn&apos;t see coming. Talk it through. Get told exactly where you
           rambled, where you filled, and where you nailed it.
         </p>
@@ -48,7 +48,7 @@ export default async function HomePage() {
 
       {/* Primary: the fun modes */}
       <section className="rise [animation-delay:90ms]">
-        <h2 className="mb-4 px-1 text-[13px] font-semibold tracking-wide text-muted uppercase">
+        <h2 className="t-label mb-4 px-1 text-muted">
           Pick your practice
         </h2>
         <div className="grid gap-3 sm:grid-cols-3">
