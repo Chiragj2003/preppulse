@@ -65,16 +65,8 @@
     background: var(--color-bg);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    /* Optical tightening — Apple tracks display text tighter than body text. */
-    letter-spacing: -0.011em;
     -webkit-font-smoothing: antialiased;
-  }
-
-  h1,
-  h2,
-  h3 {
-    letter-spacing: -0.028em;
-    text-wrap: balance;
+    font-optical-sizing: auto;
   }
 
   p {
@@ -94,6 +86,62 @@
 }
 
 @layer components {
+  /* ── Type scale ────────────────────────────────────────────────────────
+   * Tracking is a function of size, never one global value. Large display
+   * text reads too loose as it grows, so it gets negative tracking; body sits
+   * near zero; small uppercase labels get positive tracking to stay legible.
+   * Leading moves inversely - tight on display, generous on body.
+   */
+  .t-display {
+    font-size: clamp(2.25rem, 6vw, 3.75rem);
+    line-height: 1.04;
+    letter-spacing: -0.035em;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+  .t-title {
+    font-size: clamp(1.5rem, 3.2vw, 1.9rem);
+    line-height: 1.16;
+    letter-spacing: -0.024em;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+  .t-heading {
+    font-size: 1.0625rem;
+    line-height: 1.35;
+    letter-spacing: -0.014em;
+    font-weight: 600;
+  }
+  .t-body {
+    font-size: 0.9375rem;
+    line-height: 1.62;
+    letter-spacing: -0.003em;
+  }
+  .t-lead {
+    font-size: 1.0625rem;
+    line-height: 1.58;
+    letter-spacing: -0.008em;
+  }
+  .t-caption {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    letter-spacing: 0.001em;
+  }
+  /* Small + uppercase needs the most positive tracking of anything here. */
+  .t-label {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    letter-spacing: 0.075em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  /* Numerals: tabular so counters don't jitter as digits change. */
+  .t-numeric {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
   /* Instant press feedback — response on pointer-down, per apple-design §1. */
   .pressable {
     transition:
@@ -112,6 +160,37 @@
     box-shadow: var(--shadow-soft);
   }
 
+  /* ── Floating chrome ───────────────────────────────────────────────────
+   * A translucent layer content scrolls *under*, not an opaque strip that
+   * eats a band of the viewport. The bottom edge is a soft gradient rather
+   * than a 1px rule - a hard divider announces itself, a scroll edge just
+   * separates. The bright top inset is light catching the material.
+   */
+  .chrome {
+    background: color-mix(in oklab, var(--color-bg) 72%, transparent);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-surface) 60%, transparent);
+  }
+  .chrome::after {
+    content: "";
+    position: absolute;
+    inset: 100% 0 auto 0;
+    height: 20px;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-bg) 55%, transparent),
+      transparent
+    );
+  }
+
+  /* Score meters grow from zero on load - the bar filling *is* the reading. */
+  .meter-fill {
+    transform-origin: left center;
+    animation: meter 720ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+
   /* Entrance only. Springs are reserved for things the user can actually grab
    * or trigger; a one-shot fade-up is cheaper as CSS and never needs JS. */
   .rise {
@@ -126,7 +205,17 @@
   }
 }
 
-/* Respect the OS setting — motion is a garnish, never the only signal. */
+@keyframes meter {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ── Accessibility signals ──────────────────────────────────────────────
+ * Three independent preferences, handled independently. Reduced motion still
+ * gets feedback - just a cross-fade instead of travel - because removing the
+ * signal entirely is worse than moving it gently.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -135,5 +224,48 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .rise {
+    animation: fade-in 200ms ease backwards;
+  }
+  .pressable:active {
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Frost the glass into a solid surface rather than blurring the background. */
+@media (prefers-reduced-transparency: reduce) {
+  .chrome {
+    background: var(--color-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .chrome::after {
+    display: none;
+  }
+}
+
+/* Near-solid surfaces with a defined border, and muted text pulled up. */
+@media (prefers-contrast: more) {
+  :root {
+    --color-muted: var(--color-ink-soft);
+    --color-line: var(--color-ink-soft);
+  }
+  .card {
+    border-width: 1.5px;
+    box-shadow: none;
+  }
+  .chrome {
+    background: var(--color-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }

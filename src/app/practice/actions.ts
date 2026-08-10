@@ -14,17 +14,22 @@ import {
   getDailyTopic,
   getOwnedSession,
   getRandomTopic,
+  getTopicById,
   recordPractice,
 } from "@/lib/practice";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { requireUserApi } from "@/lib/session";
 import { tokensForScore } from "@/lib/scoring";
 
-export type ActionResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: { code: AppErrorCode; message: string; retryAfterSeconds?: number } };
+export interface ActionError {
+  code: AppErrorCode;
+  message: string;
+  retryAfterSeconds?: number;
+}
 
-function fail(error: unknown, context: string): { ok: false; error: ActionResult<never>["error"] } {
+export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: ActionError };
+
+function fail(error: unknown, context: string): { ok: false; error: ActionError } {
   const appError = toAppError(error, context);
   return {
     ok: false,
@@ -36,12 +41,22 @@ function fail(error: unknown, context: string): { ok: false; error: ActionResult
   };
 }
 
-/** Creates the session row, then sends the user into the practice room. */
+/**
+ * Creates the session row, then sends the user into the practice room.
+ *
+ * The topic id comes from the form rather than being re-picked here: the user
+ * has already watched a specific topic land, and re-rolling server-side would
+ * hand them a different one than the reveal promised.
+ */
 export async function startSession(formData: FormData) {
   const user = await requireUserApi();
   const quick = formData.get("mode") === "quick";
 
-  const topic = quick ? await getRandomTopic() : await getDailyTopic();
+  const requestedId = z.string().uuid().safeParse(formData.get("topicId"));
+  const topic = requestedId.success
+    ? await getTopicById(requestedId.data)
+    : ((await getDailyTopic()) ?? (await getRandomTopic()));
+
   if (!topic) {
     throw new Error("No topics are seeded yet. Run `npm run db:seed`.");
   }
@@ -60,6 +75,7 @@ const EvaluateInput = z.object({
   transcript: z.string().min(1).max(20_000),
   durationSeconds: z.number().int().min(1).max(3600),
   localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  inputMode: z.enum(["speech", "typed"]).default("speech"),
 });
 
 export async function evaluateSession(
@@ -82,6 +98,7 @@ export async function evaluateSession(
       durationSeconds: input.durationSeconds,
       mode: session.mode,
       language: session.language,
+      inputMode: input.inputMode,
     });
 
     // Upsert so a Retry on the same session replaces the old verdict.
@@ -99,6 +116,7 @@ export async function evaluateSession(
         summary: result.summary,
         wordCount: result.wordCount,
         wordsPerMinute: result.wordsPerMinute,
+        inputMode: result.inputMode,
       })
       .onConflictDoUpdate({
         target: evaluations.sessionId,
@@ -113,6 +131,7 @@ export async function evaluateSession(
           summary: result.summary,
           wordCount: result.wordCount,
           wordsPerMinute: result.wordsPerMinute,
+          inputMode: result.inputMode,
         },
       });
 

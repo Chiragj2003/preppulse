@@ -46,6 +46,9 @@ export const languageEnum = pgEnum("language", ["en", "hinglish", "hi"]);
 
 export const aiProviderEnum = pgEnum("ai_provider", ["groq", "gemini"]);
 
+/** How the answer reached us. Typed answers have no measurable speaking pace. */
+export const inputModeEnum = pgEnum("input_mode", ["speech", "typed"]);
+
 /* ── topics ────────────────────────────────────────────────────────────────
  * Deliberately wide-ranging subject matter — philosophy, science, culture,
  * everyday dilemmas — not just career/GD prompts. See src/db/topics.ts.
@@ -111,6 +114,7 @@ export const evaluations = pgTable(
     summary: text("summary"),
     wordCount: integer("word_count"),
     wordsPerMinute: integer("words_per_minute"),
+    inputMode: inputModeEnum("input_mode").notNull().default("speech"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("evaluations_session_unique").on(table.sessionId)],

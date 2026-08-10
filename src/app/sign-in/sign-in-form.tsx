@@ -26,10 +26,15 @@ export function SignInForm({
 
   async function handleGoogle() {
     setGoogleBusy(true);
-    const { error } = await signIn.social({ provider: "google", callbackURL: next });
-    if (error) {
+    try {
+      const { error } = await signIn.social({ provider: "google", callbackURL: next });
+      if (error) {
+        setGoogleBusy(false);
+        setStatus({ kind: "error", message: error.message ?? "Google sign-in didn't go through." });
+      }
+    } catch {
       setGoogleBusy(false);
-      setStatus({ kind: "error", message: error.message ?? "Google sign-in didn't go through." });
+      setStatus({ kind: "error", message: "Couldn't reach Google. Check your connection." });
     }
   }
 
@@ -39,13 +44,23 @@ export function SignInForm({
     if (!trimmed) return;
 
     setStatus({ kind: "sending" });
-    const { error } = await signIn.magicLink({ email: trimmed, callbackURL: next });
 
-    setStatus(
-      error
-        ? { kind: "error", message: error.message ?? "We couldn't send that link. Try again." }
-        : { kind: "sent", email: trimmed },
-    );
+    // A rejected promise here (network drop, non-JSON error body) must not
+    // leave the button spinning forever with no explanation.
+    try {
+      const { error } = await signIn.magicLink({ email: trimmed, callbackURL: next });
+
+      setStatus(
+        error
+          ? { kind: "error", message: error.message ?? "We couldn't send that link. Try again." }
+          : { kind: "sent", email: trimmed },
+      );
+    } catch {
+      setStatus({
+        kind: "error",
+        message: "We couldn't reach the server. Check your connection and try again.",
+      });
+    }
   }
 
   if (status.kind === "sent") {

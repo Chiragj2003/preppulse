@@ -21,6 +21,21 @@ export const auth = betterAuth({
     transaction: false,
   }),
 
+  /**
+   * Better Auth rejects requests whose Origin isn't trusted (CSRF protection),
+   * and by default only trusts `baseURL`. Three cases need to work:
+   *   - production: its own domain, and nothing else
+   *   - Vercel previews: a unique URL per deploy, which Vercel injects
+   *   - local dev: whatever port next picked when 3000 was taken
+   * The localhost wildcard is gated on NODE_ENV so it never ships.
+   */
+  trustedOrigins: [
+    env.appUrl,
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    ...(process.env.VERCEL_BRANCH_URL ? [`https://${process.env.VERCEL_BRANCH_URL}`] : []),
+    ...(process.env.NODE_ENV !== "production" ? ["http://localhost:*"] : []),
+  ],
+
   // Passwords are deliberately not supported - Google or a magic link only.
   emailAndPassword: { enabled: false },
 

@@ -15,7 +15,7 @@ for an interview this week.
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1 | Foundation — auth, schema, rate limiting, landing + dashboard | Done |
-| 2 | Random Topic / Extempore + Daily Roll (Groq) | In progress |
+| 2 | Random Topic / Extempore + Daily Roll (Groq) | Done |
 | 3 | Mock Interview (Gemini) + resume-driven recommendation | Not started |
 | 4 | Group Discussion + Debate (Groq) | Not started |
 | 5 | Progress, gamification & Redis | Not started |
@@ -74,6 +74,7 @@ All secrets live in a single git-ignored `.env`. Only `DATABASE_URL`,
 | `npm run dev` | Dev server (Turbopack) |
 | `npm run build` | Production build |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run test` | Scoring-engine self-check (no framework, plain asserts) |
 | `npm run db:generate` | Generate SQL migration from the Drizzle schema |
 | `npm run db:migrate` | Apply migrations to Neon |
 | `npm run db:seed` | Load / refresh the topic pool (idempotent) |
@@ -105,7 +106,7 @@ src/
     errors.ts                 provider errors → human sentences
 ```
 
-### Three decisions worth explaining
+### Four decisions worth explaining
 
 **The scoring engine doesn't trust the model with arithmetic.**
 Six dimensions are scored, but only four of them come from Groq. Filler-word
@@ -128,6 +129,15 @@ Redis without touching a single call site.
 act on ("The AI service is at its free-tier limit right now. Your answer is
 saved — try scoring it again in a minute."). A broken free tier should look like
 a considered message, not a stack trace.
+
+**An unmeasurable dimension is excluded, not scored zero.**
+The practice room has a typing fallback for when the mic is blocked or the
+browser has no Web Speech support. A typed answer has no speaking pace — timing
+it against the wall clock produced a real bug in testing: a good answer scored
+`pace 10/100` and lost 12 points off its composite purely for using the
+accessibility fallback. Evaluations now record how the answer arrived, and
+`weightedOverall` drops unmeasurable dimensions and renormalises over the rest.
+The report shows `n/a` and says why. Regression covered in `scoring.test.ts`.
 
 ---
 
