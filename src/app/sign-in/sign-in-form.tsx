@@ -14,10 +14,12 @@ type Status =
 export function SignInForm({
   googleEnabled,
   emailEnabled,
+  isDev,
   next,
 }: {
   googleEnabled: boolean;
   emailEnabled: boolean;
+  isDev: boolean;
   next: string;
 }) {
   const [email, setEmail] = useState("");
@@ -69,16 +71,26 @@ export function SignInForm({
         <div className="mx-auto grid size-11 place-items-center rounded-full bg-accent-soft text-accent">
           <Mail className="size-5" />
         </div>
-        <h2 className="mt-4 text-[17px] font-semibold">Check your inbox</h2>
+        <h2 className="mt-4 text-[17px] font-semibold">
+          {emailEnabled ? "Check your inbox" : "Check your terminal"}
+        </h2>
         <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">
-          We sent a sign-in link to <span className="font-medium text-ink">{status.email}</span>. It
-          works once and expires in 10 minutes.
+          Your sign-in link is on its way to{" "}
+          <span className="font-medium text-ink">{status.email}</span>. It works once and expires in
+          10 minutes.
         </p>
-        {!emailEnabled && (
+        {/* Shown for the whole of development, not just when the key is absent.
+            Delivery can still fail with a key present - Resend refuses every
+            address except the account owner's until a domain is verified - and
+            in that case the link is printed to the terminal instead. Claiming
+            "we sent it" with no caveat would simply be untrue. */}
+        {isDev && (
           <p className="mt-4 rounded-[var(--radius-xs)] bg-surface-2 px-3 py-2.5 text-left text-[13px] leading-relaxed text-ink-soft">
-            <span className="font-medium text-ink">Dev note:</span> no email provider is configured,
-            so the link was printed in the terminal running <code className="font-mono">npm run dev</code>{" "}
-            instead of being emailed.
+            <span className="font-medium text-ink">Dev note:</span>{" "}
+            {emailEnabled
+              ? "if your email provider rejects the address (Resend only delivers to its own account holder until you verify a domain), the link is printed in the terminal running "
+              : "no email provider is configured, so the link was printed in the terminal running "}
+            <code className="font-mono">npm run dev</code>.
           </p>
         )}
         <button

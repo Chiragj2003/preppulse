@@ -27,7 +27,12 @@ export default async function SignInPage({
         </p>
 
         <Suspense fallback={<div className="mt-8 h-48 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />}>
-          <SignInForm googleEnabled={env.has.google} emailEnabled={env.has.email} next={safeNext(next)} />
+          <SignInForm
+            googleEnabled={env.has.google}
+            emailEnabled={env.has.email}
+            isDev={!env.isProduction}
+            next={safeNext(next)}
+          />
         </Suspense>
 
         <p className="mt-8 text-center text-[12.5px] leading-relaxed text-muted">
