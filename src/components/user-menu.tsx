@@ -17,7 +17,9 @@ export function UserMenu({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  const initial = (name ?? email ?? "?").trim().charAt(0).toUpperCase();
+  // `||` not `??` - an empty name string is common for magic-link signups.
+  const label = name?.trim() || email?.split("@")[0] || "Signed in";
+  const initial = label.charAt(0).toUpperCase();
 
   async function handleSignOut() {
     setBusy(true);

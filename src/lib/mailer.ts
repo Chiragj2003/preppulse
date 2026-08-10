@@ -1,12 +1,34 @@
 import { env } from "./env";
 
+function logToConsole(reason: string, options: { to: string; subject: string; text: string }) {
+  console.info(
+    [
+      "",
+      "=".repeat(74),
+      `  EMAIL NOT DELIVERED - ${reason}`,
+      `  To:      ${options.to}`,
+      `  Subject: ${options.subject}`,
+      "",
+      options.text,
+      "=".repeat(74),
+      "",
+    ].join("\n"),
+  );
+}
+
 /**
- * Minimal transactional email via Resend's REST API — no SDK dependency.
+ * Minimal transactional email via Resend's REST API - no SDK dependency.
  *
- * If RESEND_API_KEY isn't set we log the message to the server console instead
- * of throwing. That keeps magic-link sign-in fully usable in local development
- * without forcing an email provider signup: the link is right there in the
- * terminal running `npm run dev`.
+ * Two deliberate fallbacks, both so that local sign-in is never blocked by
+ * email configuration:
+ *
+ *   1. No RESEND_API_KEY  -> print the message to the server console.
+ *   2. Provider rejects it in development -> print it and carry on. Resend
+ *      only delivers to the account owner's own address until a domain is
+ *      verified, which would otherwise make magic-link sign-in untestable
+ *      with any other address.
+ *
+ * In production a rejection still throws, because there it is a real failure.
  */
 export async function sendEmail(options: {
   to: string;
@@ -17,43 +39,49 @@ export async function sendEmail(options: {
   const apiKey = env.resendApiKey;
 
   if (!apiKey) {
-    console.info(
-      [
-        "",
-        "─".repeat(72),
-        "  ✉  EMAIL NOT SENT — RESEND_API_KEY is not configured.",
-        `     To:      ${options.to}`,
-        `     Subject: ${options.subject}`,
-        "",
-        options.text,
-        "─".repeat(72),
-        "",
-      ].join("\n"),
+    logToConsole("RESEND_API_KEY is not configured", options);
+    return { delivered: false };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: env.emailFrom,
+        to: [options.to],
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+      }),
+    });
+  } catch (error) {
+    if (env.isProduction) throw error;
+    logToConsole("could not reach Resend", options);
+    return { delivered: false };
+  }
+
+  if (response.ok) return { delivered: true };
+
+  const detail = await response.text().catch(() => "");
+  const restricted = /only send testing emails|verify a domain/i.test(detail);
+
+  if (!env.isProduction) {
+    logToConsole(
+      restricted
+        ? "Resend is in testing mode (verify a domain to reach other addresses)"
+        : `Resend returned ${response.status}`,
+      options,
     );
     return { delivered: false };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env.emailFrom,
-      to: [options.to],
-      subject: options.subject,
-      html: options.html,
-      text: options.text,
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Resend rejected the message (${response.status}): ${detail.slice(0, 300)}`);
-  }
-
-  return { delivered: true };
+  throw new Error(
+    restricted
+      ? "Email is not configured for this domain yet. Verify a sending domain at resend.com/domains and set EMAIL_FROM to an address on it."
+      : `Resend rejected the message (${response.status}): ${detail.slice(0, 200)}`,
+  );
 }
 
 export function magicLinkEmail(url: string) {
