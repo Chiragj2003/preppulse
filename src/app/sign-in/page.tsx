@@ -23,7 +23,7 @@ export default async function SignInPage({
       <div className="rise w-full">
         <h1 className="text-[30px] leading-tight font-semibold">Welcome to PrepPulse</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-ink-soft">
-          No passwords. Use Google, or we&apos;ll email you a link that signs you straight in.
+          Sign in with a password, or have us email you a six-digit code. Google works too.
         </p>
 
         <Suspense fallback={<div className="mt-8 h-48 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />}>

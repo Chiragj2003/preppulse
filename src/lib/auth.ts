@@ -1,11 +1,12 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { emailOTP } from "better-auth/plugins/email-otp";
 import { magicLink } from "better-auth/plugins/magic-link";
 
 import { db, schema } from "@/db";
 import { env } from "./env";
-import { magicLinkEmail, sendEmail } from "./mailer";
+import { magicLinkEmail, otpEmail, sendEmail } from "./mailer";
 
 export const auth = betterAuth({
   appName: "PrepPulse",
@@ -36,8 +37,20 @@ export const auth = betterAuth({
     ...(process.env.NODE_ENV !== "production" ? ["http://localhost:*"] : []),
   ],
 
-  // Passwords are deliberately not supported - Google or a magic link only.
-  emailAndPassword: { enabled: false },
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 8,
+    maxPasswordLength: 128,
+    // Sign straight in after signing up - a separate "now log in" step buys
+    // nothing when we just verified the credentials.
+    autoSignIn: true,
+    // ponytail: unverified emails can sign up, because email delivery isn't
+    // reliable yet (see mailer.ts). Safe for now - account linking still
+    // requires a locally verified email, so a squatted address can't capture
+    // someone's Google identity. Flip to true once a sending domain is verified.
+    requireEmailVerification: false,
+    revokeSessionsOnPasswordReset: true,
+  },
 
   // Google is only offered when it's actually configured. With these unset the
   // app still signs people in via magic link, and the sign-in page says so
@@ -74,6 +87,18 @@ export const auth = betterAuth({
   },
 
   plugins: [
+    emailOTP({
+      otpLength: 6,
+      expiresIn: 60 * 5, // 5 minutes
+      allowedAttempts: 3,
+      // Codes are short enough to brute-force from a database dump; store the
+      // hash, not the code.
+      storeOTP: "hashed",
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        const message = otpEmail(otp, type);
+        await sendEmail({ to: email, ...message });
+      },
+    }),
     magicLink({
       expiresIn: 60 * 10, // 10 minutes
       sendMagicLink: async ({ email, url }) => {

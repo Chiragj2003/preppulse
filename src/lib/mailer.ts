@@ -84,6 +84,47 @@ export async function sendEmail(options: {
   );
 }
 
+const OTP_PURPOSE: Record<string, { subject: string; line: string }> = {
+  "sign-in": { subject: "Your PrepPulse sign-in code", line: "Here's your sign-in code" },
+  "email-verification": {
+    subject: "Verify your PrepPulse email",
+    line: "Here's your verification code",
+  },
+  "forget-password": {
+    subject: "Reset your PrepPulse password",
+    line: "Here's your password reset code",
+  },
+  "change-email": { subject: "Confirm your new email", line: "Here's your confirmation code" },
+};
+
+export function otpEmail(otp: string, type: string) {
+  const purpose = OTP_PURPOSE[type] ?? OTP_PURPOSE["sign-in"];
+
+  return {
+    subject: purpose.subject,
+    text: `${purpose.line}:\n\n${otp}\n\nIt expires in 5 minutes. If you didn't request it, you can ignore this email.`,
+    html: `
+<!doctype html>
+<html>
+  <body style="margin:0;padding:32px;background:#f6f6f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr><td align="center">
+        <table role="presentation" width="100%" style="max-width:440px;background:#fff;border-radius:18px;padding:36px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+          <tr><td>
+            <p style="margin:0 0 6px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8e;">PrepPulse</p>
+            <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;color:#1c1c1e;font-weight:600;">${purpose.line}</h1>
+            <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#3a3a3c;">Enter this code to continue. It expires in 5 minutes.</p>
+            <p style="margin:0 0 22px;font-family:ui-monospace,'SF Mono',monospace;font-size:34px;font-weight:600;letter-spacing:.22em;color:#1c1c1e;background:#f4f4f6;border-radius:12px;padding:16px 0;text-align:center;">${otp}</p>
+            <p style="margin:0;font-size:13px;line-height:1.6;color:#8a8a8e;">Didn't ask for this? You can safely ignore this email - nobody can get in without the code.</p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`.trim(),
+  };
+}
+
 export function magicLinkEmail(url: string) {
   return {
     subject: "Your PrepPulse sign-in link",

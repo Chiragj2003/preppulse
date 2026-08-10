@@ -1,15 +1,14 @@
 "use client";
 
-import { Loader2, Mail } from "lucide-react";
+import { ArrowLeft, KeyRound, Loader2, Mail } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { signIn } from "@/lib/auth-client";
+import { authClient, signIn } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
-type Status =
-  | { kind: "idle" }
-  | { kind: "sending" }
-  | { kind: "sent"; email: string }
-  | { kind: "error"; message: string };
+type Method = "password" | "code";
+type Notice = { tone: "error" | "info"; text: string } | null;
 
 export function SignInForm({
   googleEnabled,
@@ -22,8 +21,8 @@ export function SignInForm({
   isDev: boolean;
   next: string;
 }) {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [method, setMethod] = useState<Method>("password");
+  const [notice, setNotice] = useState<Notice>(null);
   const [googleBusy, setGoogleBusy] = useState(false);
 
   async function handleGoogle() {
@@ -32,76 +31,12 @@ export function SignInForm({
       const { error } = await signIn.social({ provider: "google", callbackURL: next });
       if (error) {
         setGoogleBusy(false);
-        setStatus({ kind: "error", message: error.message ?? "Google sign-in didn't go through." });
+        setNotice({ tone: "error", text: error.message ?? "Google sign-in didn't go through." });
       }
     } catch {
       setGoogleBusy(false);
-      setStatus({ kind: "error", message: "Couldn't reach Google. Check your connection." });
+      setNotice({ tone: "error", text: "Couldn't reach Google. Check your connection." });
     }
-  }
-
-  async function handleMagicLink(event: React.FormEvent) {
-    event.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) return;
-
-    setStatus({ kind: "sending" });
-
-    // A rejected promise here (network drop, non-JSON error body) must not
-    // leave the button spinning forever with no explanation.
-    try {
-      const { error } = await signIn.magicLink({ email: trimmed, callbackURL: next });
-
-      setStatus(
-        error
-          ? { kind: "error", message: error.message ?? "We couldn't send that link. Try again." }
-          : { kind: "sent", email: trimmed },
-      );
-    } catch {
-      setStatus({
-        kind: "error",
-        message: "We couldn't reach the server. Check your connection and try again.",
-      });
-    }
-  }
-
-  if (status.kind === "sent") {
-    return (
-      <div className="card mt-8 p-6 text-center">
-        <div className="mx-auto grid size-11 place-items-center rounded-full bg-accent-soft text-accent">
-          <Mail className="size-5" />
-        </div>
-        <h2 className="mt-4 text-[17px] font-semibold">
-          {emailEnabled ? "Check your inbox" : "Check your terminal"}
-        </h2>
-        <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">
-          Your sign-in link is on its way to{" "}
-          <span className="font-medium text-ink">{status.email}</span>. It works once and expires in
-          10 minutes.
-        </p>
-        {/* Shown for the whole of development, not just when the key is absent.
-            Delivery can still fail with a key present - Resend refuses every
-            address except the account owner's until a domain is verified - and
-            in that case the link is printed to the terminal instead. Claiming
-            "we sent it" with no caveat would simply be untrue. */}
-        {isDev && (
-          <p className="mt-4 rounded-[var(--radius-xs)] bg-surface-2 px-3 py-2.5 text-left text-[13px] leading-relaxed text-ink-soft">
-            <span className="font-medium text-ink">Dev note:</span>{" "}
-            {emailEnabled
-              ? "if your email provider rejects the address (Resend only delivers to its own account holder until you verify a domain), the link is printed in the terminal running "
-              : "no email provider is configured, so the link was printed in the terminal running "}
-            <code className="font-mono">npm run dev</code>.
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={() => setStatus({ kind: "idle" })}
-          className="pressable mt-4 text-[13.5px] text-accent hover:underline"
-        >
-          Use a different address
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -119,7 +54,7 @@ export function SignInForm({
       ) : (
         <p className="rounded-[var(--radius-xs)] border border-dashed border-line px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">
           Google sign-in is off until <code className="font-mono">GOOGLE_CLIENT_ID</code> and{" "}
-          <code className="font-mono">GOOGLE_CLIENT_SECRET</code> are set. Magic link works now.
+          <code className="font-mono">GOOGLE_CLIENT_SECRET</code> are set. Everything below works now.
         </p>
       )}
 
@@ -129,37 +64,385 @@ export function SignInForm({
         <span className="h-px flex-1 bg-line" />
       </div>
 
-      <form onSubmit={handleMagicLink} className="space-y-2.5">
-        <label htmlFor="email" className="sr-only">
-          Email address
-        </label>
-        <input
-          id="email"
-          type="email"
-          required
-          autoComplete="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-[var(--radius-xs)] border border-line bg-surface px-3.5 py-3 text-[15px] outline-none placeholder:text-muted focus:border-accent"
-        />
-        <button
-          type="submit"
-          disabled={status.kind === "sending"}
-          className="pressable flex w-full items-center justify-center gap-2 rounded-[var(--radius-xs)] bg-accent px-4 py-3 text-[15px] font-medium text-accent-ink hover:brightness-110 disabled:opacity-60"
-        >
-          {status.kind === "sending" && <Loader2 className="size-4 animate-spin" />}
-          {status.kind === "sending" ? "Sending link..." : "Email me a sign-in link"}
-        </button>
-      </form>
+      {/* Segmented control. Two methods, not four - a wall of equal-weight
+          buttons makes people choose instead of sign in. */}
+      <div
+        role="tablist"
+        aria-label="Sign-in method"
+        className="mb-5 grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1"
+      >
+        {(
+          [
+            ["password", "Password"],
+            ["code", "Email code"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            role="tab"
+            type="button"
+            aria-selected={method === value}
+            onClick={() => {
+              setMethod(value);
+              setNotice(null);
+            }}
+            className={cn(
+              "pressable rounded-full px-3 py-2 text-[14px] font-medium transition-colors",
+              method === value
+                ? "bg-surface text-ink shadow-[var(--shadow-soft)]"
+                : "text-muted hover:text-ink-soft",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {status.kind === "error" && (
-        <p role="alert" className="mt-3 text-[13.5px] text-danger">
-          {status.message}
+      {method === "password" ? (
+        <PasswordPanel next={next} setNotice={setNotice} onUseCode={() => setMethod("code")} />
+      ) : (
+        <CodePanel next={next} setNotice={setNotice} emailEnabled={emailEnabled} isDev={isDev} />
+      )}
+
+      {notice && (
+        <p
+          role={notice.tone === "error" ? "alert" : "status"}
+          className={cn(
+            "mt-3 text-[13.5px] leading-relaxed",
+            notice.tone === "error" ? "text-danger" : "text-ink-soft",
+          )}
+        >
+          {notice.text}
         </p>
       )}
     </div>
   );
+}
+
+/* ── Password ─────────────────────────────────────────────────────────── */
+
+function PasswordPanel({
+  next,
+  setNotice,
+  onUseCode,
+}: {
+  next: string;
+  setNotice: (n: Notice) => void;
+  onUseCode: () => void;
+}) {
+  const router = useRouter();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const email = String(data.get("email") ?? "").trim();
+    const password = String(data.get("password") ?? "");
+    const name = String(data.get("name") ?? "").trim();
+
+    if (mode === "signup" && password.length < 8) {
+      setNotice({ tone: "error", text: "Passwords need to be at least 8 characters." });
+      return;
+    }
+
+    setBusy(true);
+    setNotice(null);
+
+    try {
+      const { error } =
+        mode === "signin"
+          ? await signIn.email({ email, password, callbackURL: next })
+          : await authClient.signUp.email({ email, password, name: name || email.split("@")[0] });
+
+      if (error) {
+        setBusy(false);
+        setNotice({ tone: "error", text: friendlyAuthError(error, mode) });
+        return;
+      }
+
+      router.push(next);
+      router.refresh();
+    } catch {
+      setBusy(false);
+      setNotice({ tone: "error", text: "We couldn't reach the server. Check your connection." });
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-2.5">
+      {mode === "signup" && (
+        <input
+          name="name"
+          type="text"
+          autoComplete="name"
+          placeholder="Your name (optional)"
+          className={fieldClass}
+        />
+      )}
+
+      <input
+        name="email"
+        type="email"
+        required
+        autoComplete="email"
+        placeholder="you@example.com"
+        className={fieldClass}
+      />
+
+      <input
+        name="password"
+        type="password"
+        required
+        minLength={mode === "signup" ? 8 : undefined}
+        autoComplete={mode === "signin" ? "current-password" : "new-password"}
+        placeholder={mode === "signin" ? "Password" : "Password (8+ characters)"}
+        className={fieldClass}
+      />
+
+      <button type="submit" disabled={busy} className={primaryButtonClass}>
+        {busy && <Loader2 className="size-4 animate-spin" />}
+        {busy
+          ? mode === "signin"
+            ? "Signing in..."
+            : "Creating account..."
+          : mode === "signin"
+            ? "Sign in"
+            : "Create account"}
+      </button>
+
+      <div className="flex items-center justify-between pt-1 text-[13px]">
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "signin" ? "signup" : "signin");
+            setNotice(null);
+          }}
+          className="pressable text-accent hover:underline"
+        >
+          {mode === "signin" ? "Create an account" : "I already have an account"}
+        </button>
+
+        {mode === "signin" && (
+          <button
+            type="button"
+            onClick={() => {
+              onUseCode();
+              setNotice({
+                tone: "info",
+                text: "No password needed - we'll email you a code that signs you in.",
+              });
+            }}
+            className="pressable text-muted hover:text-ink-soft"
+          >
+            Forgot password?
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/* ── Email code (OTP) ─────────────────────────────────────────────────── */
+
+function CodePanel({
+  next,
+  setNotice,
+  emailEnabled,
+  isDev,
+}: {
+  next: string;
+  setNotice: (n: Notice) => void;
+  emailEnabled: boolean;
+  isDev: boolean;
+}) {
+  const router = useRouter();
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function sendCode(address: string) {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: address,
+        type: "sign-in",
+      });
+      setBusy(false);
+
+      if (error) {
+        setNotice({ tone: "error", text: error.message ?? "We couldn't send that code." });
+        return false;
+      }
+      return true;
+    } catch {
+      setBusy(false);
+      setNotice({ tone: "error", text: "We couldn't reach the server. Check your connection." });
+      return false;
+    }
+  }
+
+  async function handleRequest(event: React.FormEvent) {
+    event.preventDefault();
+    const address = email.trim();
+    if (!address) return;
+    if (await sendCode(address)) setStep("code");
+  }
+
+  async function handleVerify(event: React.FormEvent) {
+    event.preventDefault();
+    const otp = code.trim();
+    if (otp.length < 6) return;
+
+    setBusy(true);
+    setNotice(null);
+
+    try {
+      const { error } = await signIn.emailOtp({ email: email.trim(), otp });
+      if (error) {
+        setBusy(false);
+        setCode("");
+        setNotice({
+          tone: "error",
+          text: /invalid|incorrect/i.test(error.message ?? "")
+            ? "That code isn't right. You get three tries before it's cancelled."
+            : (error.message ?? "We couldn't verify that code."),
+        });
+        return;
+      }
+
+      router.push(next);
+      router.refresh();
+    } catch {
+      setBusy(false);
+      setNotice({ tone: "error", text: "We couldn't reach the server. Check your connection." });
+    }
+  }
+
+  if (step === "code") {
+    return (
+      <form onSubmit={handleVerify} className="space-y-2.5">
+        <div className="flex items-center gap-2 text-[13.5px] text-ink-soft">
+          <Mail className="size-4 shrink-0 text-accent" />
+          <span>
+            Code sent to <span className="font-medium text-ink">{email}</span>
+          </span>
+        </div>
+
+        <label htmlFor="otp" className="sr-only">
+          Six-digit code
+        </label>
+        <input
+          id="otp"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder="000000"
+          autoFocus
+          className={cn(
+            fieldClass,
+            "text-center font-mono text-[26px] tracking-[0.32em] tabular-nums",
+          )}
+        />
+
+        <button type="submit" disabled={busy || code.length < 6} className={primaryButtonClass}>
+          {busy && <Loader2 className="size-4 animate-spin" />}
+          {busy ? "Checking..." : "Verify and sign in"}
+        </button>
+
+        <div className="flex items-center justify-between pt-1 text-[13px]">
+          <button
+            type="button"
+            onClick={() => {
+              setStep("email");
+              setCode("");
+              setNotice(null);
+            }}
+            className="pressable inline-flex items-center gap-1 text-muted hover:text-ink-soft"
+          >
+            <ArrowLeft className="size-3.5" />
+            Change email
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              if (await sendCode(email.trim())) {
+                setCode("");
+                setNotice({ tone: "info", text: "New code sent. The previous one no longer works." });
+              }
+            }}
+            className="pressable text-accent hover:underline disabled:opacity-50"
+          >
+            Resend code
+          </button>
+        </div>
+
+        {isDev && (
+          <p className="mt-3 rounded-[var(--radius-xs)] bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-ink-soft">
+            <span className="font-medium text-ink">Dev note:</span>{" "}
+            {emailEnabled
+              ? "if your provider rejects the address, the code is printed in the terminal running "
+              : "no email provider is configured, so the code was printed in the terminal running "}
+            <code className="font-mono">npm run dev</code>.
+          </p>
+        )}
+      </form>
+    );
+  }
+
+  return (
+    <form onSubmit={handleRequest} className="space-y-2.5">
+      <label htmlFor="code-email" className="sr-only">
+        Email address
+      </label>
+      <input
+        id="code-email"
+        type="email"
+        required
+        autoComplete="email"
+        placeholder="you@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className={fieldClass}
+      />
+
+      <button type="submit" disabled={busy} className={primaryButtonClass}>
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
+        {busy ? "Sending code..." : "Email me a 6-digit code"}
+      </button>
+
+      <p className="pt-1 text-[12.5px] leading-relaxed text-muted">
+        No password needed. We&apos;ll create your account if you don&apos;t have one yet.
+      </p>
+    </form>
+  );
+}
+
+/* ── Shared bits ──────────────────────────────────────────────────────── */
+
+const fieldClass =
+  "w-full rounded-[var(--radius-xs)] border border-line bg-surface px-3.5 py-3 text-[15px] outline-none placeholder:text-muted focus:border-accent";
+
+const primaryButtonClass =
+  "pressable flex w-full items-center justify-center gap-2 rounded-[var(--radius-xs)] bg-accent px-4 py-3 text-[15px] font-medium text-accent-ink hover:brightness-110 disabled:opacity-60";
+
+function friendlyAuthError(error: { message?: string; code?: string }, mode: "signin" | "signup") {
+  const raw = error.message ?? "";
+
+  if (/already exists|already registered/i.test(raw)) {
+    return "There's already an account with that email. Try signing in instead.";
+  }
+  if (/invalid email or password|invalid credentials/i.test(raw)) {
+    return "That email and password don't match. If you signed up with Google or a code, use that instead.";
+  }
+  if (/password/i.test(raw) && /short|length/i.test(raw)) {
+    return "Passwords need to be at least 8 characters.";
+  }
+  return raw || (mode === "signin" ? "We couldn't sign you in." : "We couldn't create that account.");
 }
 
 function GoogleMark() {
