@@ -17,7 +17,7 @@ export async function SiteHeader() {
       className="fixed inset-x-0 top-0 px-4 pt-4 sm:px-6 sm:pt-5"
       style={{ zIndex: "var(--z-sticky)" }}
     >
-      <div className="material m-clear mx-auto flex h-14 max-w-6xl items-center justify-between rounded-full pr-2 pl-5">
+      <div className="material m-frost m-refract mx-auto flex h-14 max-w-6xl items-center justify-between rounded-full border border-white/5 pr-2 pl-5 shadow-[var(--shadow-float)]">
         <Link
           href="/"
           className="group relative flex items-center gap-2.5"
