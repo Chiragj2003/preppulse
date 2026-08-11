@@ -51,7 +51,7 @@ to an LLM. Secrets stay server-side, and there is no REST layer for our own UI.
 | Pages / components | `src/app`, `src/components` | lib, db types | Call providers directly |
 | Server actions | `src/app/**/actions.ts` | lib, db | Be imported by other actions |
 | Domain | `src/lib` | db, other lib | Import from `src/app` |
-| Pure maths | `scoring.ts`, `interview-scoring.ts`, `gd-metrics.ts`, `gamification.ts`, `billing.ts` | types only | **Any I/O whatsoever** |
+| Pure maths | `scoring.ts`, `interview-scoring.ts`, `gd-metrics.ts`, `gamification.ts`, `billing.ts`, `scenarios.ts`, `cost.ts` | types only | **Any I/O whatsoever** |
 | AI clients | `src/lib/ai` | lib, db | Be called from a client component |
 | Cache | `src/lib/redis.ts` | — | Ever throw — returns `null` on any failure |
 | Data | `src/db` | — | Import from lib (except types) |
@@ -92,6 +92,7 @@ depends on `mode`:
 | `random_topic` | one `evaluations` row |
 | `interview` | N `interview_questions`, M `interview_answers` (M ≥ N with retries) |
 | `group_discussion`, `debate` | many `discussion_turns` |
+| `conversation`, `scenario` | many `discussion_turns` — same table, same engine |
 
 `ai_usage` does double duty: Phase 8 cost reporting **and** the rate limiter's
 counter (see `decisions.md` D7).
@@ -223,6 +224,73 @@ sequenceDiagram
 
 Debate is the same machine with one opponent and four ordered stages —
 opening, argument, rebuttal, closing.
+
+---
+
+## 6b. One engine, four modes (Phase 7)
+
+Conversation and scenario role-plays reuse the discussion machinery wholesale.
+The only thing that varies is who is on the other side and what they want.
+
+```mermaid
+flowchart TB
+    subgraph Shared["Shared engine - built once in Phase 4"]
+        T[("discussion_turns")]
+        SP["speak() action"]
+        UI["DiscussionRoom"]
+    end
+
+    GD["Group discussion<br/>4 personas + moderator"] --> SP
+    DB["Debate<br/>1 opponent, 4 stages"] --> SP
+    CV["Conversation<br/>1 counterpart, no agenda"] --> SP
+    SC["Scenario<br/>1 counterpart, opposing goal"] --> SP
+
+    SP --> T
+    T --> UI
+
+    SP -.->|"role-play only"| GUARD{"Deflection<br/>or repeat?"}
+    GUARD -->|yes| RETRY["re-ask once,<br/>naming the failure"]
+    GUARD -->|no| OK["append"]
+
+    style Shared fill:#1d2a3a
+    style GUARD fill:#3a2a1d
+```
+
+**What Phase 7 actually added:** one data file (`lib/scenarios.ts`), one prompt
+function, one setup page and one start action. The room, transcript, composer,
+optimistic append and metrics all came for free.
+
+**The guard is the interesting part.** Deflecting is always the safe reply for
+a model, so "tell me more about that" is the failure mode it falls into under
+uncertainty. Telling it not to helps; *checking whether it did* is what holds
+the line — the same reason filler words are counted rather than judged.
+
+---
+
+## 6c. Flow: admin & cost (Phase 8)
+
+```mermaid
+flowchart LR
+    C1["Groq call"] --> U[("ai_usage<br/>one row per call")]
+    C2["Gemini call"] --> U
+    C3["Failed call"] --> U
+
+    U --> RL["Rate limiter<br/>counts rows per window"]
+    U --> AD["Admin page<br/>groups and sums"]
+
+    AD --> P1["Cost per session<br/>← the number that matters"]
+    AD --> P2["By provider / model / operation"]
+    AD --> P3["Median latency, not mean"]
+
+    style U fill:#1d3a2a
+    style P1 fill:#2a1d3a
+```
+
+`ai_usage` was written in Phase 1 for exactly this, and the rate limiter reads
+the same rows — one table doing two jobs.
+
+Failed calls are logged too: a burst of provider 429s is usage worth backing
+off from, and a failure rate is something the admin page should show.
 
 ---
 
@@ -363,7 +431,9 @@ session id alone is never sufficient.
 | `/interview/[id]/report` | required | Aggregate + question by question |
 | `/discuss` | required | GD or debate setup (renders a paywall if locked) |
 | `/discuss/[id]` | required | Live room |
+| `/rooms` | required | Conversation & scenario role-plays |
 | `/progress` | required | Chart, badges, standing |
+| `/admin` | admin only | Cost and usage — 404s for everyone else |
 | `/pricing` | public | Plans read from the database |
 | `/pricing/checkout` | required | Dummy gateway |
 | `/s/[slug]` | **public** | Opt-in share card — score only, no transcript |

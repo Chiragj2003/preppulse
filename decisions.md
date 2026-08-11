@@ -605,6 +605,130 @@ demo.
 
 ---
 
+# Conversation & scenarios (Phase 7)
+
+## D51. Role-play reuses the discussion engine entirely
+
+**Decision.** Conversation and scenario modes use the same `discussion_turns`
+table, the same `speak()` action and the same room component as group
+discussion and debate. Only the counterpart and the brief change.
+
+**Why.** The plan said "reuse Phase 2/3 recording and scoring infrastructure —
+don't rebuild", and it was right. A conversation *is* a turn loop: read
+history, send it with a brief, append replies. Building a second engine would
+have been the same state machine with different labels and twice the surface
+to keep in sync.
+
+**What that bought.** Phase 7 added one data file, one prompt function, one
+setup page and one action. The room, the transcript, the composer, the
+optimistic append and the metrics came for free.
+
+**Reverse.** If role-play ever needs something structurally different — branching
+outcomes, a scored rubric per turn — split it then, not in anticipation.
+
+## D52. Deflection is detected in code, not hoped away in the prompt
+
+**Decision.** `isDeflection()` and `isRepetitive()` check every counterpart
+reply. On a hit, we re-ask once with an instruction naming the specific
+failure.
+
+**Why.** The brief called out "avoid repetitive 'tell me more' responses"
+explicitly, and for good reason: deflecting is *always* a safe reply for a
+model, so it's the failure mode it falls into under any uncertainty. A reply
+that is nothing but a short question means the counterpart contributed nothing
+and the user is now doing all the work — which is the opposite of practice.
+
+Telling the model not to do it helps. Checking whether it did is what actually
+holds the line. Same principle as counting filler words rather than asking.
+
+**One retry only.** A second failure ships the reply anyway rather than
+spending the user's rate limit chasing perfection mid-conversation.
+
+## D53. Contractions are expanded before repetition matching
+
+**Decision.** `normalise()` expands `'s`, `n't`, `'re`, `'ll`, `'ve`, `'m`,
+`'d` before comparing word sets.
+
+**Why.** Found by a failing test. "that's a fair point" and "that is a fair
+point" share only half their words once apostrophes are stripped, so a
+straight repeat slipped through as novel. The test was right and the detector
+was wrong.
+
+## D54. The counterpart speaks first
+
+**Decision.** Starting a role-play seeds turn 0 with the counterpart's scripted
+opening line.
+
+**Why.** A role-play that opens with an empty box puts the hardest part —
+starting the scene — on the person who came to practise the *rest* of it. It
+also sets the tone: "This is the second time. The SECOND time." tells you
+instantly what kind of room you're in.
+
+## D55. Role-play hides the airtime metrics
+
+**Decision.** Speaking share, arguments and rebuttals are shown for group
+discussion and debate, and hidden for conversation and scenario.
+
+**Why.** They'd be actively misleading. A negotiation where you spoke 70% of
+the words is not a failure — it might be exactly right. The presence band
+exists to teach "don't dominate a panel", which is not a lesson that transfers
+to a one-to-one.
+
+---
+
+# Admin & cost (Phase 8)
+
+## D56. Admin access is an environment allowlist, failing closed
+
+**Decision.** `ADMIN_EMAILS` is a comma-separated list. An empty list locks
+everyone out.
+
+**Why.** There is exactly one admin. A roles table, a permissions model and an
+invite flow would all be machinery serving a single row. When there is a second
+admin, add the column then.
+
+**Failing closed matters.** An empty allowlist letting everyone in is the
+classic way an access check becomes a hole after a config change.
+
+## D57. Non-admins get 404, not 403
+
+**Decision.** `notFound()` rather than a forbidden page.
+
+**Why.** A 403 confirms the page exists. There is no reason to tell anyone
+that, and no cost to not telling them.
+
+## D58. Cost per session is the headline, not total spend
+
+**Decision.** The admin page leads with cost per session, and excludes sessions
+that made no AI calls from the denominator.
+
+**Why.** Total spend on a portfolio project is a number near zero and tells you
+nothing. Cost per session is the only figure that answers "does this scale" —
+multiply it by the users you hope for and you have your answer. Including
+abandoned sessions that never reached scoring would flatter the average and
+hide the real number.
+
+**Measured on real data:** $0.0005 per session.
+
+## D59. Latency is reported as a median
+
+**Decision.** `summarise()` computes median latency, not mean.
+
+**Why.** One 45-second provider timeout in a sample of four would drag a mean
+to ~11 seconds and make a healthy p50 of 850ms look broken. There's a test
+asserting exactly that case.
+
+## D60. The month projection is deliberately naive
+
+**Decision.** Straight-line from days elapsed, labelled as an estimate in the
+UI.
+
+**Why.** With a handful of users there isn't enough signal for anything
+cleverer, and a confident-looking forecast built on three days of data would be
+worse than an obviously rough one.
+
+---
+
 # Open items
 
 - `requireEmailVerification` is off while email delivery is unreliable. Marked
@@ -615,6 +739,11 @@ demo.
   it over with no code change.
 - Cached topic briefs have a Redis helper (`getCached`/`setCached`) but nothing
   populates them yet — the brief generator is a Phase 10 polish item.
+- Role-play sessions record turns but aren't scored against their
+  `successLooksLike` criteria yet. The criteria are defined and displayed; the
+  end-of-session verdict is a Phase 10 item.
+- `ADMIN_EMAILS` must be set on Vercel as well as locally, or `/admin` 404s in
+  production.
 - The Turbopack dev CSS parser warns about `@layer properties;` in Tailwind's
   own generated output. Non-fatal; the production build is clean.
 - `drizzle-kit` pulls a dev-only `esbuild` advisory through deprecated
@@ -628,7 +757,8 @@ Recorded because each one cost real time and none produced a useful error.
 
 | Trap | Symptom | Fix |
 | --- | --- | --- |
-| Two processes writing `.next` | `ENOENT ... _buildManifest.js.tmp.*` flood, dead server | Never run `next build` while `next dev` is running. Kill node, delete `.next`, restart. |
+| Two processes writing `.next` | `ENOENT ... _buildManifest.js.tmp.*` flood, dead server | Never run `next build` while `next dev` is running |
+| Switching between build and dev | Same ENOENT flood on a *fresh* dev start | Leftover production artifacts also break dev. `npm run dev:clean` deletes `.next` first. |
 | Stale Turbopack cache | An import error that contradicts a passing `tsc` | Delete `.next` and restart |
 | PowerShell 5.1 round-trip | UTF-8 renders as `â”€`; a BOM appears | `Get-Content -Raw` decodes as ANSI, `Set-Content -Encoding utf8` writes a BOM. Use ASCII in config files. |
 | `??` on a user's name | "Good evening, " with no name | Magic-link signup stores `""`, not null. Use `||`. |

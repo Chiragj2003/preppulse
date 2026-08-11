@@ -64,13 +64,15 @@ is configured `transaction: false`.
 </details>
 
 <details>
-<summary><b>A4.</b> Which three files must never contain I/O, and why does it matter?</summary>
+<summary><b>A4.</b> Which files must never contain I/O, and why does it matter?</summary>
 
-`lib/scoring.ts`, `lib/interview-scoring.ts`, `lib/gd-metrics.ts`.
+`scoring.ts`, `interview-scoring.ts`, `gd-metrics.ts`, `gamification.ts`,
+`billing.ts`, `scenarios.ts`, `cost.ts` — seven files, one test suite each.
 
-They decide people's scores. Keeping them pure is what lets them be tested with
-`node:assert` and `tsx` — no test framework, no mocks, no database. The I/O
-lives one layer out in `lib/ai/*`.
+They decide people's scores, what they've paid for, and what the product costs
+to run. Keeping them pure is what lets them be tested with `node:assert` and
+`tsx` — no test framework, no mocks, no database. The I/O lives one layer out
+in `lib/ai/*` and the data-access modules.
 </details>
 
 ---
@@ -328,6 +330,137 @@ metrics counted zero arguments and zero rebuttals until a page refresh.
 
 Fixed by returning the tags from the `speak()` action and patching the
 optimistic turn before appending the replies.
+</details>
+
+---
+
+## Ea. Conversation & scenarios
+
+<details>
+<summary><b>Ea1. ⭐</b> Phase 7 added two whole modes. How much new engine did it need?</summary>
+
+None. Conversation and scenario use the same `discussion_turns` table, the same
+`speak()` action and the same room component as group discussion and debate.
+
+What actually got written: one data file, one prompt function, one setup page,
+one start action. The room, transcript, composer, optimistic append and metrics
+came for free.
+
+A conversation *is* a turn loop — read history, send it with a brief, append
+replies. A second engine would have been the same state machine with different
+labels and twice the surface to keep in sync.
+
+**Interview angle:** a good "I recognised I already had this" answer, which is
+rarer than "I built a thing".
+</details>
+
+<details>
+<summary><b>Ea2. ⭐</b> Why is there code checking for "tell me more about that"?</summary>
+
+Because deflecting is **always** the safe reply for a model, so it's the
+failure mode it falls into under any uncertainty — and a counterpart that only
+asks questions means the user is doing all the work, which is the opposite of
+practice.
+
+`isDeflection()` catches it (including any bare short question, whatever the
+phrasing) and we re-ask **once**, naming the specific failure. Telling the model
+not to do it helps; checking whether it did is what holds the line.
+
+Exactly the same principle as counting filler words instead of asking. One
+retry only — a second failure ships anyway rather than burning the user's rate
+limit mid-conversation.
+</details>
+
+<details>
+<summary><b>Ea3.</b> A test caught a bug in the repetition detector. What was it?</summary>
+
+`"that's a fair point"` and `"that is a fair point"` share only half their words
+once apostrophes are stripped, so a straight repeat read as novel.
+
+Fixed by expanding contractions (`'s`, `n't`, `'re`, `'ll`, `'ve`, `'m`, `'d`)
+before comparing word sets. The test was right; the detector was wrong.
+</details>
+
+<details>
+<summary><b>Ea4.</b> Why does the counterpart speak first?</summary>
+
+A role-play that opens with an empty box puts the hardest part — starting the
+scene — on the person who came to practise the rest of it.
+
+It also sets the tone instantly. *"This is the second time. The SECOND time."*
+tells you what kind of room you're in before you type a word.
+</details>
+
+<details>
+<summary><b>Ea5.</b> Why does role-play hide the speaking-share metric?</summary>
+
+It would be actively misleading. A negotiation where you spoke 70% of the words
+might be exactly right. The presence band exists to teach "don't dominate a
+panel" — a lesson that doesn't transfer to a one-to-one.
+</details>
+
+---
+
+## Eb. Admin & cost
+
+<details>
+<summary><b>Eb1. ⭐</b> Which number leads the admin page, and why not total spend?</summary>
+
+**Cost per session.** Measured at $0.0005.
+
+Total spend on a portfolio project is a number near zero and tells you nothing.
+Cost per session is the only figure that answers "does this scale" — multiply
+it by the users you hope for and you have your answer.
+
+Sessions that made no AI calls are excluded from the denominator, because an
+abandoned session that never reached scoring would flatter the average and hide
+the real number.
+</details>
+
+<details>
+<summary><b>Eb2.</b> How much new data collection did Phase 8 need?</summary>
+
+None. `ai_usage` has been written on every model call since Phase 1, for exactly
+this. The rate limiter already reads the same rows — one table doing two jobs.
+
+Phase 8 is aggregation over data that was already there.
+</details>
+
+<details>
+<summary><b>Eb3. ⭐</b> Why median latency rather than mean?</summary>
+
+One 45-second provider timeout in a sample of four drags a mean to ~11 seconds
+and makes a healthy p50 of 850ms look broken.
+
+There's a test asserting exactly that: four calls at 700/800/900/45000ms must
+report 850, not 11,850.
+</details>
+
+<details>
+<summary><b>Eb4.</b> How is admin access controlled, and what happens if the config is empty?</summary>
+
+An `ADMIN_EMAILS` allowlist. **Empty locks everyone out** — failing closed is
+the only safe default for an access check, and an empty list letting everyone
+in is the classic way this becomes a hole after a config change.
+
+There's exactly one admin, so a roles table, permissions model and invite flow
+would be machinery serving a single row.
+</details>
+
+<details>
+<summary><b>Eb5.</b> A non-admin hits /admin. What status do they get, and why?</summary>
+
+**404**, not 403. A 403 confirms the page exists. There's no reason to tell
+anyone that, and no cost to not telling them.
+</details>
+
+<details>
+<summary><b>Eb6.</b> The month projection is a straight line. Isn't that crude?</summary>
+
+Yes, deliberately, and it's labelled as an estimate. With a handful of users
+there isn't enough signal for anything cleverer, and a confident-looking
+forecast built on three days of data would be worse than an obviously rough
+one.
 </details>
 
 ---
@@ -713,6 +846,15 @@ running.** Kill node, delete `.next`, restart.
 </details>
 
 <details>
+<summary><b>H8.</b> Dev broke on a <em>fresh</em> start, with no other server running. Why?</summary>
+
+Leftover **production** artifacts in `.next` from an earlier `next build` also
+break dev — it isn't only about simultaneous processes.
+
+`npm run dev:clean` deletes `.next` first. Use it after any build.
+</details>
+
+<details>
 <summary><b>H7.</b> A server action throws for an expected state. What does the user see?</summary>
 
 "Application error: a server-side exception has occurred." Next renders the
@@ -732,6 +874,8 @@ Rate yourself honestly on each area:
 | Scoring philosophy | | | |
 | Interview engine | | | |
 | GD & debate | | | |
+| Conversation & scenarios | | | |
+| Admin & cost | | | |
 | Progress & gamification | | | |
 | Monetization | | | |
 | Design system | | | |
@@ -741,7 +885,7 @@ The middle column is the one interviews test. If you can state a decision but
 not the alternative you rejected, go back to `decisions.md` — every entry names
 what was rejected and why.
 
-**The four to have ready cold:**
+**The five to have ready cold:**
 
 1. **B1** — countable vs judgement. The governing rule of the codebase, and the
    best thing to lead with.
@@ -751,6 +895,8 @@ what was rejected and why.
    infrastructure and survives serverless.
 4. **Fb4** — swapping the payment gateway touches two files, because
    entitlements were never scattered through the screens.
+5. **Ea1** — two whole modes shipped with no new engine, because a
+   conversation is a turn loop and one already existed.
 
 **If you only remember one sentence:** *anything countable is counted in code;
 only judgements go to a model.* Almost every other decision in this project
