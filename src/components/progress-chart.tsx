@@ -1,148 +1,70 @@
+"use client";
+
+import { useMemo } from "react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import type { DayPoint } from "@/lib/gamification";
 
-/**
- * Hand-drawn SVG, no charting library.
- *
- * The requirement was to avoid generic dashboard charts, and a library would
- * have brought its own visual opinions — gridlines, tooltips, a legend — that
- * would then need overriding to look like the rest of the product. This is
- * about sixty lines and inherits the design tokens directly.
- *
- * A server component: there is no interaction here, so there is no reason to
- * ship it to the browser.
- */
 export function ProgressChart({ series }: { series: DayPoint[] }) {
-  const width = 760;
-  const height = 200;
-  const padding = { top: 16, bottom: 28, left: 0, right: 0 };
-  const plotHeight = height - padding.top - padding.bottom;
+  const data = useMemo(() => {
+    return series.map((point, i) => ({
+      ...point,
+      index: i,
+      displayScore: point.averageScore ?? null,
+    }));
+  }, [series]);
 
-  const step = series.length > 1 ? width / (series.length - 1) : width;
-  const scored = series.filter((p) => p.averageScore !== null);
-
-  // Fixed 0-100 domain. Auto-scaling to the data would make a 4-point wobble
-  // look like a cliff, which is a chart lying about the size of a change.
-  const y = (score: number) => padding.top + plotHeight * (1 - score / 100);
-
-  const points = series
-    .map((point, index) => ({ point, index }))
-    .filter(({ point }) => point.averageScore !== null);
-
-  // Rest days break the line rather than being interpolated through: joining
-  // across a gap would invent a score for a day nobody practised.
-  const segments: { x: number; y: number }[][] = [];
-  let run: { x: number; y: number }[] = [];
-  let previousIndex = -2;
-
-  for (const { point, index } of points) {
-    if (index !== previousIndex + 1 && run.length > 0) {
-      segments.push(run);
-      run = [];
-    }
-    run.push({ x: index * step, y: y(point.averageScore!) });
-    previousIndex = index;
-  }
-  if (run.length > 0) segments.push(run);
+  if (series.length === 0) return null;
 
   return (
-    <figure>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full overflow-visible"
-        role="img"
-        aria-label={`Average score over the last ${series.length} days`}
-      >
-        {/* Reference lines at 50 and 75, unlabelled inside the plot */}
-        {[50, 75].map((mark) => (
-          <line
-            key={mark}
-            x1={0}
-            x2={width}
-            y1={y(mark)}
-            y2={y(mark)}
-            stroke="var(--color-line)"
-            strokeDasharray="2 6"
+    <div className="h-[200px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 16, right: 0, left: -24, bottom: 0 }}>
+          <defs>
+            <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <XAxis 
+            dataKey="date" 
+            hide={true}
           />
-        ))}
-
-        {/* Session-count bars: presence, sitting behind the score line */}
-        {series.map((point, index) => {
-          if (point.sessions === 0) return null;
-          const barHeight = Math.min(plotHeight, point.sessions * 10);
-          return (
-            <rect
-              key={point.date}
-              x={index * step - 3}
-              y={padding.top + plotHeight - barHeight}
-              width={6}
-              height={barHeight}
-              rx={3}
-              fill="var(--color-accent)"
-              opacity={0.14}
-            />
-          );
-        })}
-
-        {segments.map((segment, i) => (
-          <polyline
-            key={i}
-            points={segment.map((p) => `${p.x},${p.y}`).join(" ")}
-            fill="none"
-            stroke="var(--color-accent)"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ filter: "drop-shadow(0 0 8px var(--color-accent))" }}
+          <YAxis 
+            domain={[0, 100]} 
+            tickFormatter={(val) => `${val}`}
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "var(--color-ink-4)", fontSize: 12 }}
+            ticks={[0, 25, 50, 75, 100]}
           />
-        ))}
-
-        {points.map(({ point, index }) => (
-          <circle
-            key={point.date}
-            cx={index * step}
-            cy={y(point.averageScore!)}
-            r={3.5}
-            fill="var(--color-void)"
-            stroke="var(--color-accent)"
-            strokeWidth={2}
+          <Tooltip 
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const data = payload[0].payload;
+                if (data.displayScore === null) return null;
+                return (
+                  <div className="rounded-xl border border-white/10 bg-void/80 p-3 backdrop-blur-xl shadow-xl">
+                    <p className="text-[12px] text-ink-3 mb-1">{data.date}</p>
+                    <p className="text-[16px] font-display font-medium text-ink">Score: <span className="text-accent">{data.displayScore}</span></p>
+                    <p className="text-[12px] text-ink-4 mt-1">{data.sessions} {data.sessions === 1 ? 'session' : 'sessions'}</p>
+                  </div>
+                );
+              }
+              return null;
+            }}
           />
-        ))}
-
-        {/* Only the ends are labelled. A label per day is noise at this width. */}
-        <text
-          x={0}
-          y={height - 6}
-          fill="var(--color-ink-4)"
-          fontSize="11"
-          fontFamily="var(--font-mono)"
-        >
-          {formatDay(series[0]?.date)}
-        </text>
-        <text
-          x={width}
-          y={height - 6}
-          textAnchor="end"
-          fill="var(--color-ink-4)"
-          fontSize="11"
-          fontFamily="var(--font-mono)"
-        >
-          Today
-        </text>
-      </svg>
-
-      <figcaption className="t-meta mt-4 text-ink-4">
-        {scored.length === 0
-          ? "No scored sessions in this window yet."
-          : `Average score per day across ${scored.length} active ${scored.length === 1 ? "day" : "days"}. Bars show how many sessions you ran.`}
-      </figcaption>
-    </figure>
+          <Area 
+            type="monotone" 
+            dataKey="displayScore" 
+            stroke="var(--color-accent)" 
+            strokeWidth={3}
+            fillOpacity={1}
+            fill="url(#scoreGradient)" 
+            connectNulls={false}
+            activeDot={{ r: 6, fill: "var(--color-accent)", stroke: "var(--color-void)", strokeWidth: 2 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   );
-}
-
-function formatDay(date?: string) {
-  if (!date) return "";
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
 }

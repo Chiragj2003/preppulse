@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { EvaluationMetric, ScoreDisplay } from "@/components/ui/score";
 import { Surface } from "@/components/ui/surface";
 import { aggregateScores, runningAverage } from "@/lib/interview-scoring";
 import { requireUser } from "@/lib/session";
+import { AppError } from "@/lib/errors";
 import {
   ANSWER_DIMENSIONS,
   ANSWER_HINTS,
@@ -26,7 +27,16 @@ export default async function InterviewReportPage({
   const { sessionId } = await params;
   const user = await requireUser(`/interview/${sessionId}/report`);
 
-  const { session, questions, answers } = await getInterview(sessionId, user.id);
+  let sessionResult;
+  try {
+    sessionResult = await getInterview(sessionId, user.id);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "not_found") {
+      notFound();
+    }
+    throw error;
+  }
+  const { session, questions, answers } = sessionResult;
   if (answers.length === 0) redirect(`/interview/${sessionId}`);
 
   const overall = runningAverage(answers) ?? 0;

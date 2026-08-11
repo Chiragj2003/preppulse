@@ -82,6 +82,8 @@ export const topics = pgTable(
     category: text("category").notNull(),
     difficulty: difficultyEnum("difficulty").notNull().default("medium"),
     promptText: text("prompt_text").notNull(),
+    /** Deep context on the topic for the user to read before speaking. */
+    knowledgeBase: text("knowledge_base"),
     /** Short AI-generated angle-opener, cached so we don't re-bill for it. */
     cachedBrief: text("cached_brief"),
     isActive: boolean("is_active").notNull().default(true),

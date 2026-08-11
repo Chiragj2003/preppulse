@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 
 import { PracticeRoom } from "@/components/practice-room";
 import { getSessionWithEvaluation } from "@/lib/practice";
 import { requireUser } from "@/lib/session";
+import { AppError } from "@/lib/errors";
 
 export const metadata: Metadata = { title: "Practice room" };
 
@@ -18,7 +19,16 @@ export default async function PracticeRoomPage({
   const user = await requireUser(`/practice/${sessionId}`);
   const { prep, speak } = await searchParams;
 
-  const { session, evaluation } = await getSessionWithEvaluation(sessionId, user.id);
+  let sessionResult;
+  try {
+    sessionResult = await getSessionWithEvaluation(sessionId, user.id);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "not_found") {
+      notFound();
+    }
+    throw error;
+  }
+  const { session, evaluation } = sessionResult;
 
   // Already scored - no reason to sit through the timer again.
   if (evaluation) redirect(`/practice/${sessionId}/report`);

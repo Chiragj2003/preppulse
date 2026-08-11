@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 
 import { InterviewRoom } from "@/components/interview-room";
 import { requireUser } from "@/lib/session";
+import { AppError } from "@/lib/errors";
 import type { InterviewerPersona } from "@/lib/types";
 import { getInterview } from "../actions";
 
@@ -16,7 +17,16 @@ export default async function InterviewRoomPage({
   const { sessionId } = await params;
   const user = await requireUser(`/interview/${sessionId}`);
 
-  const { session, questions, answers } = await getInterview(sessionId, user.id);
+  let sessionResult;
+  try {
+    sessionResult = await getInterview(sessionId, user.id);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "not_found") {
+      notFound();
+    }
+    throw error;
+  }
+  const { session, questions, answers } = sessionResult;
 
   if (session.status === "completed") redirect(`/interview/${sessionId}/report`);
 

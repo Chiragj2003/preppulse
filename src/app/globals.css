@@ -87,11 +87,11 @@
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
-  --dur-press: 120ms;
-  --dur-fast: 180ms;
-  --dur-base: 260ms;
-  --dur-slow: 420ms;
-  --dur-cinematic: 900ms;
+  --dur-press: 100ms;
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-slow: 300ms;
+  --dur-cinematic: 600ms;
 
   /* -- Z-index ------------------------------------------------------------ */
   --z-base: 0;

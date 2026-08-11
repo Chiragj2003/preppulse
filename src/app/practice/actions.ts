@@ -4,11 +4,12 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { Filter } from "bad-words";
 
 import { db } from "@/db";
 import { evaluations, practiceSessions } from "@/db/schema";
 import { scoreAnswer } from "@/lib/ai/score";
-import { toAppError, type AppErrorCode } from "@/lib/errors";
+import { AppError, toAppError, type AppErrorCode } from "@/lib/errors";
 import {
   createPracticeSession,
   getDailyTopic,
@@ -59,7 +60,7 @@ export async function startSession(formData: FormData) {
   const requestedId = z.string().uuid().safeParse(formData.get("topicId"));
   const topic = requestedId.success
     ? await getTopicById(requestedId.data)
-    : ((await getDailyTopic()) ?? (await getRandomTopic()));
+    : ((await getDailyTopic(undefined, user.id)) ?? (await getRandomTopic()));
 
   if (!topic) {
     throw new Error("No topics are seeded yet. Run `npm run db:seed`.");
@@ -94,6 +95,11 @@ export async function evaluateSession(
 
     // Cap AI spend per user before we call anything paid.
     await enforceRateLimit(user.id);
+
+    const filter = new Filter();
+    if (filter.isProfane(input.transcript)) {
+      throw new AppError("invalid_input", "Your response contained inappropriate language. Please keep it professional.");
+    }
 
     const session = await getOwnedSession(input.sessionId, user.id);
 

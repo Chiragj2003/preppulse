@@ -307,8 +307,8 @@ export function DiscussionRoom({
                 <Button
                   variant="ghost"
                   onClick={() => speech.stop()}
-                  disabled={!speech.interimText && !speech.finalText}
-                  icon={<Square className="size-4" />}
+                  disabled={!speech.interimText && !speech.finalText && !speech.isRecording}
+                  icon={<Square className="size-4" fill="currentColor" />}
                   aria-label="Stop recording"
                 />
                 <div className="flex-1 overflow-hidden h-6 flex items-center justify-center relative">
@@ -317,7 +317,7 @@ export function DiscussionRoom({
                       {speech.finalText} {speech.interimText}
                     </p>
                   ) : (
-                    <Waveform active={true} />
+                    <Waveform active={speech.isRecording} />
                   )}
                 </div>
                 <button

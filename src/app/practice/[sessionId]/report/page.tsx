@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 
 import { ScoreReport } from "@/components/score-report";
 import { ShareToggle } from "@/components/share-toggle";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { getSessionWithEvaluation, getStreak } from "@/lib/practice";
 import { getEntitlements } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
+import { AppError } from "@/lib/errors";
 
 export const metadata: Metadata = { title: "Your report" };
 
@@ -19,7 +20,16 @@ export default async function ReportPage({
   const { sessionId } = await params;
   const user = await requireUser(`/practice/${sessionId}/report`);
 
-  const { session, evaluation } = await getSessionWithEvaluation(sessionId, user.id);
+  let sessionResult;
+  try {
+    sessionResult = await getSessionWithEvaluation(sessionId, user.id);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "not_found") {
+      notFound();
+    }
+    throw error;
+  }
+  const { session, evaluation } = sessionResult;
 
   // Not scored yet — send them back to actually do the session.
   if (!evaluation) redirect(`/practice/${sessionId}`);

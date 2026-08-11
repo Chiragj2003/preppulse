@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSession } from "@/lib/session";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
+import { Notifications } from "./notifications";
 
 /**
  * Floating clear-glass chrome that content scrolls *under*, rather than an
@@ -38,7 +39,9 @@ export async function SiteHeader() {
                 <Link href="/dashboard" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Dashboard</Link>
                 <Link href="/practice" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Practice</Link>
                 <Link href="/discuss" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Discuss</Link>
+                <Link href="/leaderboard" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Leaderboard</Link>
               </div>
+              <Notifications />
               <ThemeToggle />
               <UserMenu
                 name={session.user.name}

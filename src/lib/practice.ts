@@ -18,7 +18,7 @@ export function todayKey(date = new Date()): string {
   return date.toISOString().slice(0, 10);
 }
 
-export async function getDailyTopic(dateKey = todayKey()) {
+export async function getDailyTopic(dateKey = todayKey(), userId?: string) {
   const [topic] = await db
     .select()
     .from(topics)
@@ -26,7 +26,27 @@ export async function getDailyTopic(dateKey = todayKey()) {
     .orderBy(sql`md5(${topics.id}::text || ${dateKey})`)
     .limit(1);
 
-  return topic ?? null;
+  if (!topic) return null;
+
+  if (userId) {
+    const [existingSession] = await db
+      .select()
+      .from(practiceSessions)
+      .where(
+        and(
+          eq(practiceSessions.userId, userId),
+          eq(practiceSessions.topicId, topic.id),
+          sql`DATE(${practiceSessions.createdAt}) = DATE(NOW())`
+        )
+      )
+      .limit(1);
+
+    if (existingSession) {
+      return getRandomTopic();
+    }
+  }
+
+  return topic;
 }
 
 export async function getTopicById(id: string) {
@@ -124,7 +144,7 @@ export async function getRecentSessions(userId: string, limit = 8) {
     })
     .from(practiceSessions)
     .leftJoin(evaluations, eq(evaluations.sessionId, practiceSessions.id))
-    .where(eq(practiceSessions.userId, userId))
+    .where(and(eq(practiceSessions.userId, userId), eq(practiceSessions.status, "completed")))
     .orderBy(desc(practiceSessions.createdAt))
     .limit(limit);
 }

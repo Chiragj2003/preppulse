@@ -29,7 +29,7 @@ export default async function HomePage() {
         <p className="t-micro rise mb-10">
           Daily speaking practice
           <span className="mx-3 text-ink-4">/</span>
-          <span className="text-ink-2">
+          <span className="text-ink-2" suppressHydrationWarning>
             {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long" })}
           </span>
         </p>

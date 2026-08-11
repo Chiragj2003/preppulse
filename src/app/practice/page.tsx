@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { DailyRoll } from "@/components/daily-roll";
 import { EmptyState } from "@/components/ui/states";
+import { KnowledgeBaseModal } from "@/components/knowledge-base-modal";
 import { getDailyTopic, getDecoyPrompts, getRandomTopic, getStreak } from "@/lib/practice";
 import { requireUser } from "@/lib/session";
 
@@ -22,7 +23,7 @@ export default async function PracticePage({
   const { mode } = await searchParams;
   const quick = mode === "quick";
 
-  const topic = quick ? await getRandomTopic() : await getDailyTopic();
+  const topic = quick ? await getRandomTopic() : await getDailyTopic(undefined, user.id);
 
   if (!topic) {
     return (
@@ -58,6 +59,9 @@ export default async function PracticePage({
           category={topic.category}
           quick={quick}
         />
+        <div className="flex justify-center mt-2">
+          <KnowledgeBaseModal knowledgeBase={topic.knowledgeBase} />
+        </div>
       </div>
 
       <p className="mt-16 text-center">

@@ -4,6 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { Filter } from "bad-words";
 
 import { db } from "@/db";
 import { discussionTurns, practiceSessions } from "@/db/schema";
@@ -101,6 +102,11 @@ export async function speak(
     const user = await requireUserApi();
     const input = SpeakInput.parse(raw);
     await enforceRateLimit(user.id);
+
+    const filter = new Filter();
+    if (filter.isProfane(input.content)) {
+      throw new AppError("invalid_input", "Your response contained inappropriate language. Please keep it professional.");
+    }
 
     const [session] = await db
       .select()

@@ -10,6 +10,25 @@ import { displayName } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
+function getSessionHref(session: { id: string; mode: string | null; overallScore: number | null }) {
+  if (session.mode === "interview") {
+    return session.overallScore !== null
+      ? `/interview/${session.id}/report`
+      : `/interview/${session.id}`;
+  }
+  if (
+    session.mode === "group_discussion" ||
+    session.mode === "debate" ||
+    session.mode === "scenario" ||
+    session.mode === "conversation"
+  ) {
+    return `/discuss/${session.id}`;
+  }
+  return session.overallScore !== null
+    ? `/practice/${session.id}/report`
+    : `/practice/${session.id}`;
+}
+
 /**
  * The dashboard answers one question before anything else:
  * "What should I practise right now?"
@@ -149,10 +168,10 @@ export default async function DashboardPage() {
             <li key={room.title}>
               <Link
                 href={room.href}
-                className="group flex h-full flex-col justify-between gap-6 rounded-2xl border border-line bg-white/5 p-6 transition-colors hover:border-accent/50 hover:bg-white/[0.07]"
+                className="group flex h-full flex-col justify-between gap-6 rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-white/[0.02] p-8 shadow-xl backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:border-accent/40 hover:from-white/10 hover:to-white/5 hover:shadow-2xl hover:shadow-accent/20"
               >
-                <h3 className="t-heading transition-colors group-hover:text-accent">{room.title}</h3>
-                <p className="t-body text-sm text-ink-3">{room.body}</p>
+                <h3 className="t-heading transition-colors group-hover:text-accent font-display text-xl">{room.title}</h3>
+                <p className="t-body text-sm text-ink-3 group-hover:text-ink-2 transition-colors">{room.body}</p>
               </Link>
             </li>
           ))}
@@ -170,24 +189,20 @@ export default async function DashboardPage() {
             className="border-t border-line"
           />
         ) : (
-          <ul className="divide-y divide-line/70 border-t border-line">
+          <ul className="flex flex-col mt-4">
             {sessions.map((session) => (
               <li key={session.id}>
                 <Link
-                  href={
-                    session.overallScore !== null
-                      ? `/practice/${session.id}/report`
-                      : `/practice/${session.id}`
-                  }
-                  className="group grid grid-cols-[1fr_auto] items-baseline gap-x-8 gap-y-1 py-6 transition-colors hover:bg-white/[0.02]"
+                  href={getSessionHref(session)}
+                  className="group grid grid-cols-[1fr_auto] items-baseline gap-x-8 gap-y-1 p-5 mb-3 rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm transition-all duration-300 hover:scale-[1.01] hover:border-accent/30 hover:bg-accent/5 hover:shadow-lg"
                 >
-                  <p className="t-body truncate text-ink-2 transition-colors group-hover:text-ink">
+                  <p className="t-body truncate text-ink-2 transition-colors group-hover:text-ink font-medium">
                     {session.prompt ?? "Practice session"}
                   </p>
-                  <span className="t-numeric row-span-2 self-center text-[22px] text-ink">
+                  <span className="t-numeric row-span-2 self-center text-[22px] text-ink group-hover:text-accent transition-colors">
                     {session.overallScore ?? <span className="t-micro">not scored</span>}
                   </span>
-                  <p className="t-micro">
+                  <p className="t-micro text-ink-4 group-hover:text-ink-3 transition-colors">
                     {formatWhen(session.createdAt)}
                     {session.status !== "completed" && ` / ${statusLabel(session.status)}`}
                   </p>

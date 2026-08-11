@@ -12,6 +12,7 @@ export function useSpeech() {
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [supported, setSupported] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const wantsToRunRef = useRef(false);
@@ -51,7 +52,9 @@ export function useSpeech() {
       }
     };
 
+    recognition.onstart = () => setIsRecording(true);
     recognition.onend = () => {
+      setIsRecording(false);
       if (wantsToRunRef.current) {
         try {
           recognition.start();
@@ -91,5 +94,5 @@ export function useSpeech() {
     setTyped("");
   }, []);
 
-  return { finalText, interimText, typed, setTyped, error, supported, start, stop, reset };
+  return { finalText, interimText, typed, setTyped, error, supported, isRecording, start, stop, reset };
 }

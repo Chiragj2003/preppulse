@@ -32,19 +32,26 @@ export function LanguageForm({
           AI coaching and prompts will use this language.
         </p>
 
-        <select
-          key={current}
-          id="language-select"
-          name="language"
-          defaultValue={current}
-          className="mt-5 w-full max-w-xs rounded-[var(--radius-sm)] border border-line bg-void px-4 py-3 text-[14px] text-ink outline-none focus:border-accent"
-        >
+        <div className="mt-5 flex flex-col gap-3 max-w-sm">
           {(Object.entries(labels) as [Language, string][]).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
+            <label
+              key={value}
+              className={`flex items-center gap-3 cursor-pointer rounded-xl border p-4 transition-all duration-300 has-[:checked]:border-accent has-[:checked]:bg-accent/10 border-white/10 hover:bg-white/5`}
+            >
+              <input
+                type="radio"
+                name="language"
+                value={value}
+                defaultChecked={current === value}
+                className="peer sr-only"
+              />
+              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-ink-4 peer-checked:border-accent">
+                <span className="h-2.5 w-2.5 rounded-full bg-accent opacity-0 transition-opacity peer-checked:opacity-100" />
+              </span>
+              <span className="t-body text-ink font-medium">{label}</span>
+            </label>
           ))}
-        </select>
+        </div>
 
         <div className="mt-6 flex items-center gap-4">
           <Button type="submit" variant="primary" disabled={pending}>
