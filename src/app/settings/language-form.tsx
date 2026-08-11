@@ -33,6 +33,7 @@ export function LanguageForm({
         </p>
 
         <select
+          key={current}
           id="language-select"
           name="language"
           defaultValue={current}

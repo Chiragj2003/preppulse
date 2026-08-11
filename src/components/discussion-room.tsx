@@ -53,6 +53,7 @@ export function DiscussionRoom({
   mode: RoomMode;
   stance: "for" | "against";
   counterpartName?: string;
+  language: string;
   completed: boolean;
   initialTurns: Turn[];
 }) {
@@ -69,7 +70,7 @@ export function DiscussionRoom({
   const [done, setDone] = useState(completed);
   const [typedMode, setTypedMode] = useState(false);
   
-  const tts = useTTS();
+  const tts = useTTS(language);
   const speech = useSpeech();
   const endRef = useRef<HTMLDivElement | null>(null);
 

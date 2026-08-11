@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from "react";
 
-export function useTTS() {
+export function useTTS(language?: string) {
   const queueRef = useRef<string[]>([]);
   const isSpeakingRef = useRef(false);
 
@@ -17,13 +17,28 @@ export function useTTS() {
     const utterance = new SpeechSynthesisUtterance(text);
     
     const voices = window.speechSynthesis.getVoices();
-    const voice =
-      voices.find((v) => v.name.includes("Microsoft Aria Online (Natural)")) ||
-      voices.find((v) => v.name.includes("Microsoft Jenny Online (Natural)")) ||
-      voices.find((v) => v.name.includes("Google UK English Female")) ||
-      voices.find((v) => v.name.includes("Google US English")) ||
-      voices.find((v) => v.lang.startsWith("en-")) ||
-      voices[0];
+    let voice;
+    
+    const isHindi = language === "hi" || language === "hinglish";
+    
+    if (isHindi) {
+      voice = 
+        voices.find((v) => v.name.includes("Swara")) ||
+        voices.find((v) => v.name.includes("Madhur")) ||
+        voices.find((v) => v.name.includes("हिन्दी")) ||
+        voices.find((v) => v.lang.startsWith("hi-")) ||
+        voices.find((v) => v.lang.startsWith("en-IN"));
+    }
+    
+    if (!voice) {
+      voice =
+        voices.find((v) => v.name.includes("Microsoft Aria Online (Natural)")) ||
+        voices.find((v) => v.name.includes("Microsoft Jenny Online (Natural)")) ||
+        voices.find((v) => v.name.includes("Google UK English Female")) ||
+        voices.find((v) => v.name.includes("Google US English")) ||
+        voices.find((v) => v.lang.startsWith("en-")) ||
+        voices[0];
+    }
 
     if (voice) utterance.voice = voice;
     utterance.rate = 1.05;

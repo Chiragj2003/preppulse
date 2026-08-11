@@ -41,7 +41,7 @@ export function PersonaSelector({ personas }: { personas: DiscussionPersona[] })
           return (
             <label
               key={persona.id}
-              className={`cursor-pointer transition-opacity ${isDisabled ? "opacity-50" : ""}`}
+              className={`group cursor-pointer transition-all duration-300 ${isDisabled ? "opacity-30 grayscale" : !isSelected && selected.size > 0 ? "opacity-60" : "opacity-100"}`}
             >
               <input
                 type="checkbox"
@@ -55,10 +55,10 @@ export function PersonaSelector({ personas }: { personas: DiscussionPersona[] })
               <Surface
                 material="liquid"
                 radius="md"
-                className="h-full p-5 transition-colors peer-checked:bg-accent-wash/30 peer-checked:border-accent/40 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
+                className="h-full p-5 transition-all duration-300 peer-checked:bg-accent/20 peer-checked:border-accent peer-checked:ring-1 peer-checked:ring-accent peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <p className="t-heading">{persona.name}</p>
+                  <p className="t-heading transition-colors group-has-checked:text-accent">{persona.name}</p>
                   <span className="t-micro">{persona.trait}</span>
                 </div>
                 <p className="t-meta mt-2">{persona.instruction}</p>

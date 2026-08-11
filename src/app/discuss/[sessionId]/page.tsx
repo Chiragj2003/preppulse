@@ -26,6 +26,7 @@ export default async function DiscussionRoomPage({
       mode={session.mode as RoomMode}
       counterpartName={scenario?.counterpart.name}
       stance={session.config?.userStance ?? "for"}
+      language={session.language}
       completed={session.status === "completed"}
       initialTurns={turns.map((t) => ({
         id: t.id,

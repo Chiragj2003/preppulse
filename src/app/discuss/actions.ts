@@ -52,6 +52,9 @@ export async function startDiscussion(formData: FormData) {
 
   const profile = await getProfile(user.id);
 
+  const selectedPersonas = formData.getAll("selectedPersonas") as string[];
+  const finalPersonas = selectedPersonas.length > 0 ? selectedPersonas : GD_PERSONAS.map((p) => p.id);
+
   const [session] = await db
     .insert(practiceSessions)
     .values({
@@ -62,7 +65,7 @@ export async function startDiscussion(formData: FormData) {
       language: profile?.preferredLanguage ?? "en",
       promptSnapshot: topic.promptText,
       config: {
-        personaIds: GD_PERSONAS.map((p) => p.id),
+        personaIds: finalPersonas,
         userStance: input.stance ?? "for",
       },
     })
