@@ -1,221 +1,470 @@
 @import "tailwindcss";
 
-/* ── Design tokens ─────────────────────────────────────────────────────────
- * Apple-leaning: near-neutral surfaces, one confident accent, generous radii,
- * shadows that read as depth rather than decoration.
- */
-@theme {
-  --color-bg: oklch(99% 0.003 265);
-  --color-surface: oklch(100% 0 0);
-  --color-surface-2: oklch(96.8% 0.004 265);
-  --color-ink: oklch(21% 0.012 265);
-  --color-ink-soft: oklch(44% 0.012 265);
-  --color-muted: oklch(58% 0.012 265);
-  --color-line: oklch(91% 0.006 265);
-  --color-accent: oklch(53% 0.21 280);
-  --color-accent-soft: oklch(95% 0.03 280);
-  --color-accent-ink: oklch(100% 0 0);
-  --color-positive: oklch(62% 0.15 155);
-  --color-warn: oklch(72% 0.16 65);
-  --color-danger: oklch(58% 0.2 20);
+/* ===========================================================================
+   PREPPULSE / LIQUID EDITORIAL
+   ---------------------------------------------------------------------------
+   One design language for the whole product. Every screen is composed from
+   these tokens and the material classes below; nothing re-invents its own
+   colour, shadow or easing locally.
 
-  --radius-xs: 8px;
-  --radius-sm: 12px;
-  --radius-md: 18px;
-  --radius-lg: 26px;
-  --radius-xl: 34px;
+   The identity is deliberately dark-only. "Near-black base, warm white text"
+   is an art-direction decision, not a theme preference, so there is no light
+   branch to keep in sync.
 
-  --shadow-soft: 0 1px 2px oklch(20% 0.02 265 / 0.04), 0 8px 24px oklch(20% 0.02 265 / 0.06);
-  --shadow-lift: 0 2px 4px oklch(20% 0.02 265 / 0.05), 0 18px 48px oklch(20% 0.02 265 / 0.1);
+   ASCII-only comments on purpose: box-drawing characters get mangled to
+   mojibake by any tool that reads this file as ANSI.
+   =========================================================================== */
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+/* `static` is required, not cosmetic. By default Tailwind v4 only emits theme
+   variables that a *generated utility* references, and most of these are
+   consumed by the hand-written material and type classes below. Without it,
+   --font-display and --blur-dense resolve to nothing, which silently drops the
+   display face back to system-ui and makes every backdrop-filter invalid. */
+@theme static {
+  /* -- Substrate ----------------------------------------------------------
+     Charcoal, very slightly cool, so the warm text reads warm against it. */
+  --color-void: oklch(10.5% 0.006 285);
+  --color-base: oklch(13.2% 0.007 285);
+  --color-raised: oklch(17% 0.008 285);
+  --color-elevated: oklch(21.5% 0.009 285);
+
+  /* -- Ink ----------------------------------------------------------------
+     Warm white primary against cool neutral secondaries. That small
+     temperature split is what stops a monochrome palette reading as grey mud. */
+  --color-ink: oklch(96.5% 0.008 85);
+  --color-ink-2: oklch(71% 0.008 265);
+  --color-ink-3: oklch(55% 0.008 265);
+  --color-ink-4: oklch(42% 0.007 265);
+
+  /* -- Accent: restrained lavender ---------------------------------------
+     Budget is roughly 10% of the surface: active, focus, progress, one CTA. */
+  --color-accent: oklch(76% 0.12 296);
+  --color-accent-deep: oklch(58% 0.135 296);
+  --color-accent-wash: oklch(28% 0.045 296);
+
+  /* -- Signal -------------------------------------------------------------
+     Desaturated on purpose: this is a coaching product, not an alarm panel. */
+  --color-positive: oklch(78% 0.105 158);
+  --color-caution: oklch(82% 0.1 78);
+  --color-critical: oklch(68% 0.15 22);
+
+  /* -- Structure ---------------------------------------------------------- */
+  --color-line: oklch(24% 0.008 285);
+  --color-line-bright: oklch(33% 0.01 285);
+
+  /* -- Type families ------------------------------------------------------ */
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  /* -- Radius ------------------------------------------------------------- */
+  --radius-xs: 10px;
+  --radius-sm: 14px;
+  --radius-md: 20px;
+  --radius-lg: 28px;
+  --radius-xl: 40px;
+
+  /* -- Depth --------------------------------------------------------------
+     Shadows are large, soft and very dark. On a near-black substrate a tight
+     shadow is invisible; only a wide one reads as elevation. */
+  --shadow-flat: 0 1px 2px oklch(0% 0 0 / 0.4);
+  --shadow-near: 0 2px 6px oklch(0% 0 0 / 0.42), 0 8px 20px oklch(0% 0 0 / 0.3);
+  --shadow-lift: 0 4px 12px oklch(0% 0 0 / 0.45), 0 24px 56px oklch(0% 0 0 / 0.42);
+  --shadow-float: 0 8px 24px oklch(0% 0 0 / 0.5), 0 44px 96px oklch(0% 0 0 / 0.5);
+  --shadow-accent: 0 12px 48px oklch(58% 0.135 296 / 0.22);
+
+  /* -- Blur --------------------------------------------------------------- */
+  --blur-clear: 14px;
+  --blur-dense: 26px;
+  --blur-frost: 48px;
+
+  /* -- Motion -------------------------------------------------------------
+     Custom curves only. The stock CSS easings are too weak to read as
+     intentional, and ease-in is never used for UI: it withholds movement at
+     exactly the moment the user is watching most closely. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --dur-press: 120ms;
+  --dur-fast: 180ms;
+  --dur-base: 260ms;
+  --dur-slow: 420ms;
+  --dur-cinematic: 900ms;
+
+  /* -- Z-index ------------------------------------------------------------ */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-sticky: 100;
+  --z-overlay: 200;
+  --z-modal: 300;
+  --z-toast: 400;
 }
 
+/* ===========================================================================
+   BASE
+   =========================================================================== */
 @layer base {
   :root {
-    color-scheme: light dark;
-  }
-
-  /* Dark mode redeclares the same custom properties @theme generated — Tailwind
-   * utilities read them through var(), so overriding on :root is enough. */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --color-bg: oklch(15% 0.012 265);
-      --color-surface: oklch(19% 0.014 265);
-      --color-surface-2: oklch(24% 0.016 265);
-      --color-ink: oklch(97% 0.004 265);
-      --color-ink-soft: oklch(80% 0.008 265);
-      --color-muted: oklch(64% 0.012 265);
-      --color-line: oklch(30% 0.014 265);
-      --color-accent: oklch(70% 0.17 280);
-      --color-accent-soft: oklch(28% 0.06 280);
-      --color-accent-ink: oklch(14% 0.02 280);
-      --shadow-soft: 0 1px 2px oklch(0% 0 0 / 0.3), 0 8px 24px oklch(0% 0 0 / 0.35);
-      --shadow-lift: 0 2px 4px oklch(0% 0 0 / 0.35), 0 18px 48px oklch(0% 0 0 / 0.45);
-    }
+    color-scheme: dark;
   }
 
   html {
     -webkit-text-size-adjust: 100%;
+    scrollbar-color: var(--color-line-bright) transparent;
   }
 
   body {
-    background: var(--color-bg);
+    background: var(--color-void);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
     font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   p {
     text-wrap: pretty;
   }
 
+  /* One focus treatment for the entire product. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
   ::selection {
-    background: var(--color-accent-soft);
+    background: var(--color-accent-wash);
     color: var(--color-ink);
   }
 
-  :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 4px;
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-bright);
+    border-radius: 99px;
+    border: 3px solid transparent;
+    background-clip: content-box;
   }
 }
 
 @layer components {
-  /* ── Type scale ────────────────────────────────────────────────────────
-   * Tracking is a function of size, never one global value. Large display
-   * text reads too loose as it grows, so it gets negative tracking; body sits
-   * near zero; small uppercase labels get positive tracking to stay legible.
-   * Leading moves inversely - tight on display, generous on body.
-   */
+  /* =========================================================================
+     TYPE SCALE
+     Tracking is a function of size: strongly negative at display sizes, near
+     zero at body, positive on small uppercase metadata. Leading moves
+     inversely. Large type builds atmosphere, small type builds precision.
+     ========================================================================= */
+
+  .t-hero {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 11.5vw, 9.5rem);
+    line-height: 0.9;
+    letter-spacing: -0.05em;
+    font-weight: 500;
+    text-wrap: balance;
+  }
+
   .t-display {
-    font-size: clamp(2.25rem, 6vw, 3.75rem);
-    line-height: 1.04;
-    letter-spacing: -0.035em;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 6.2vw, 4.25rem);
+    line-height: 0.98;
+    letter-spacing: -0.04em;
+    font-weight: 500;
     text-wrap: balance;
   }
+
   .t-title {
-    font-size: clamp(1.5rem, 3.2vw, 1.9rem);
-    line-height: 1.16;
-    letter-spacing: -0.024em;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 3.4vw, 2.35rem);
+    line-height: 1.08;
+    letter-spacing: -0.032em;
+    font-weight: 500;
     text-wrap: balance;
   }
+
   .t-heading {
-    font-size: 1.0625rem;
-    line-height: 1.35;
-    letter-spacing: -0.014em;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 1.1875rem;
+    line-height: 1.3;
+    letter-spacing: -0.022em;
+    font-weight: 500;
   }
-  .t-body {
-    font-size: 0.9375rem;
-    line-height: 1.62;
-    letter-spacing: -0.003em;
-  }
+
   .t-lead {
     font-size: 1.0625rem;
-    line-height: 1.58;
-    letter-spacing: -0.008em;
+    line-height: 1.6;
+    letter-spacing: -0.012em;
+    color: var(--color-ink-2);
   }
-  .t-caption {
+
+  .t-body {
+    font-size: 0.9375rem;
+    line-height: 1.68;
+    letter-spacing: -0.004em;
+  }
+
+  .t-meta {
     font-size: 0.8125rem;
-    line-height: 1.5;
-    letter-spacing: 0.001em;
+    line-height: 1.55;
+    letter-spacing: 0.002em;
+    color: var(--color-ink-3);
   }
-  /* Small + uppercase needs the most positive tracking of anything here. */
-  .t-label {
-    font-size: 0.75rem;
+
+  /* Small, wide-tracked, uppercase. The precision voice of the system. */
+  .t-micro {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
     line-height: 1.4;
-    letter-spacing: 0.075em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    font-weight: 600;
+    color: var(--color-ink-3);
   }
-  /* Numerals: tabular so counters don't jitter as digits change. */
+
+  /* Technical readouts: timers, scores, counts. Tabular so digits do not
+     jitter as they change. */
   .t-numeric {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
   }
 
-  /* Instant press feedback — response on pointer-down, per apple-design §1. */
-  .pressable {
-    transition:
-      transform 120ms cubic-bezier(0.2, 0, 0, 1),
-      background-color 160ms ease,
-      box-shadow 160ms ease;
-  }
-  .pressable:active {
-    transform: scale(0.972);
-  }
+  /* =========================================================================
+     MATERIALS
+     Five levels, each a distinct physical thing. Not every surface is glass:
+     glass reads as expensive only when it is rare and sits against solids.
 
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
+     Shared anatomy: translucency, blur, a gradient hairline that catches light
+     at the top edge, an inner highlight, and a soft depth shadow.
+     ========================================================================= */
+
+  .material {
+    position: relative;
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-soft);
   }
 
-  /* ── Floating chrome ───────────────────────────────────────────────────
-   * A translucent layer content scrolls *under*, not an opaque strip that
-   * eats a band of the viewport. The bottom edge is a soft gradient rather
-   * than a 1px rule - a hard divider announces itself, a scroll edge just
-   * separates. The bright top inset is light catching the material.
-   */
-  .chrome {
-    background: color-mix(in oklab, var(--color-bg) 72%, transparent);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-surface) 60%, transparent);
-  }
-  .chrome::after {
+  /* The specular hairline: a gradient border drawn with a mask, brightest at
+     the top-left where the light is and fading to nothing by the bottom. A
+     flat 1px rgba border is the tell of cheap glass. */
+  .material::before {
     content: "";
     position: absolute;
-    inset: 100% 0 auto 0;
-    height: 20px;
-    pointer-events: none;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
     background: linear-gradient(
-      to bottom,
-      color-mix(in oklab, var(--color-bg) 55%, transparent),
+      155deg,
+      oklch(100% 0 0 / 0.18),
+      oklch(100% 0 0 / 0.05) 32%,
+      oklch(100% 0 0 / 0) 62%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Vendor prefixes for backdrop-filter are left to Lightning CSS, which adds
+     them from browserslist. Writing the -webkit- form by hand made it emit
+     ONLY the prefixed property, which current Chrome does not accept. */
+
+  /* CLEAR GLASS: floating controls and navigation. Barely there. */
+  .m-clear {
+    background: oklch(20% 0.008 285 / 0.42);
+    backdrop-filter: blur(var(--blur-clear)) saturate(150%);
+    box-shadow: var(--shadow-flat);
+  }
+
+  /* DENSE GLASS: important interactive surfaces. Reads as a real object. */
+  .m-dense {
+    background: oklch(21% 0.009 285 / 0.72);
+    backdrop-filter: blur(var(--blur-dense)) saturate(165%);
+    box-shadow: var(--shadow-near);
+  }
+
+  /* FROSTED GLASS: modals and sheets. Pushes their context away. */
+  .m-frost {
+    background: oklch(19% 0.008 285 / 0.86);
+    backdrop-filter: blur(var(--blur-frost)) saturate(180%);
+    box-shadow: var(--shadow-float);
+  }
+
+  /* DARK LIQUID: the main application surface. Opaque, quiet, holds content. */
+  .m-liquid {
+    background: linear-gradient(168deg, oklch(16.5% 0.008 285), oklch(13.8% 0.007 285) 65%);
+    box-shadow: var(--shadow-near);
+  }
+
+  /* ELEVATED SOLID: maximum readability, nothing showing through. */
+  .m-solid {
+    background: var(--color-raised);
+    box-shadow: var(--shadow-lift);
+  }
+
+  /* Restrained refraction: one faint chromatic wash across a glass surface.
+     Used on at most one hero object per screen. */
+  .m-refract::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(120% 90% at 12% 0%, oklch(76% 0.12 296 / 0.13), transparent 55%);
+    pointer-events: none;
+  }
+
+  /* =========================================================================
+     INTERACTION
+     ========================================================================= */
+
+  /* Feedback on pointer-down, never on release. Transform and opacity only. */
+  .pressable {
+    transition:
+      transform var(--dur-press) var(--ease-out),
+      opacity var(--dur-fast) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out);
+  }
+  .pressable:active {
+    transform: scale(0.975);
+  }
+
+  /* Depth on hover: the surface lifts toward the viewer rather than changing
+     colour. Cheap to composite, and it reads as physical. */
+  .liftable {
+    transition:
+      transform var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .liftable:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lift);
+    }
+  }
+
+  /* =========================================================================
+     ATMOSPHERE
+     ========================================================================= */
+
+  /* A single low, off-centre light source. Establishes the space the glass
+     layers float in; without it, translucency has nothing to be translucent
+     against. */
+  .atmosphere {
+    position: relative;
+    isolation: isolate;
+  }
+  .atmosphere::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(70% 55% at 18% -8%, oklch(30% 0.055 296 / 0.5), transparent 62%),
+      radial-gradient(52% 45% at 88% 6%, oklch(26% 0.035 250 / 0.38), transparent 60%),
+      radial-gradient(90% 70% at 50% 108%, oklch(20% 0.03 296 / 0.35), transparent 65%);
+    pointer-events: none;
+  }
+
+  /* Photographic grain, to take the digital sterility off flat dark panels.
+     SVG turbulence as a data URI: no network request, no image asset. */
+  .grain::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.032;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* A hairline that fades out at both ends, so sections separate without a
+     hard rule announcing itself. */
+  .rule {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-line-bright) 18%,
+      var(--color-line-bright) 82%,
       transparent
     );
   }
 
-  /* Score meters grow from zero on load - the bar filling *is* the reading. */
-  .meter-fill {
-    transform-origin: left center;
-    animation: meter 720ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  }
+  /* =========================================================================
+     ENTRANCES
+     One-shot and non-interactive. Springs are reserved for anything the user
+     can actually trigger or grab.
+     ========================================================================= */
 
-  /* Entrance only. Springs are reserved for things the user can actually grab
-   * or trigger; a one-shot fade-up is cheaper as CSS and never needs JS. */
   .rise {
-    animation: rise 620ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation: rise var(--dur-slow) var(--ease-out) backwards;
+  }
+  .fade {
+    animation: fade var(--dur-slow) var(--ease-out) backwards;
+  }
+  .unblur {
+    animation: unblur var(--dur-cinematic) var(--ease-out) backwards;
   }
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(14px);
   }
 }
 
-@keyframes meter {
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Materialising, not fading: blur and scale resolve together so the surface
+   reads as arriving rather than being turned up in opacity. */
+@keyframes unblur {
+  from {
+    opacity: 0;
+    filter: blur(14px);
+    transform: scale(1.03);
+  }
+}
+
+/* Metric bars draw themselves left to right: the line arriving *is* the
+   reading, rather than a finished bar fading in. */
+@keyframes grow {
   from {
     transform: scaleX(0);
   }
 }
 
-/* ── Accessibility signals ──────────────────────────────────────────────
- * Three independent preferences, handled independently. Reduced motion still
- * gets feedback - just a cross-fade instead of travel - because removing the
- * signal entirely is worse than moving it gently.
- */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ===========================================================================
+   ACCESSIBILITY
+   Three independent preferences, handled independently.
+   =========================================================================== */
+
+/* Reduced motion still gets feedback, just a cross-fade instead of travel.
+   Removing the signal entirely is worse than moving it gently. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -226,46 +475,44 @@
     scroll-behavior: auto !important;
   }
 
-  .rise {
-    animation: fade-in 200ms ease backwards;
+  .rise,
+  .unblur {
+    animation: fade 200ms ease backwards;
   }
-  .pressable:active {
+  .pressable:active,
+  .liftable:hover {
     transform: none;
   }
 }
 
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
-
-/* Frost the glass into a solid surface rather than blurring the background. */
+/* Frost the glass into solid surfaces rather than blurring what is behind. */
 @media (prefers-reduced-transparency: reduce) {
-  .chrome {
-    background: var(--color-bg);
+  .m-clear,
+  .m-dense,
+  .m-frost {
+    background: var(--color-raised);
     backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border-bottom: 1px solid var(--color-line);
   }
-  .chrome::after {
+  .atmosphere::before,
+  .grain::after {
     display: none;
   }
 }
 
-/* Near-solid surfaces with a defined border, and muted text pulled up. */
 @media (prefers-contrast: more) {
   :root {
-    --color-muted: var(--color-ink-soft);
-    --color-line: var(--color-ink-soft);
+    --color-ink-2: oklch(88% 0.006 265);
+    --color-ink-3: oklch(76% 0.007 265);
+    --color-line: oklch(48% 0.01 285);
+    --color-line-bright: oklch(58% 0.012 285);
   }
-  .card {
-    border-width: 1.5px;
-    box-shadow: none;
+  .material::before {
+    background: var(--color-line-bright);
   }
-  .chrome {
-    background: var(--color-bg);
+  .m-clear,
+  .m-dense,
+  .m-frost {
+    background: var(--color-base);
     backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
 }
