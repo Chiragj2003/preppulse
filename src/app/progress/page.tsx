@@ -9,6 +9,8 @@ import { getStreak } from "@/lib/practice";
 import { getProgress } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 
+import { BackButton } from "@/components/back-button";
+
 export const metadata: Metadata = { title: "Progress" };
 
 /**
@@ -37,8 +39,14 @@ export default async function ProgressPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-5 pt-28 pb-24 sm:px-6">
-      <header className="rise">
-        <p className="t-micro mb-6">Progress</p>
+      <header className="rise relative">
+        <div className="absolute -left-12 top-0 hidden md:block">
+          <BackButton />
+        </div>
+        <p className="t-micro mb-6 flex items-center gap-3">
+          <span className="md:hidden"><BackButton /></span>
+          Progress
+        </p>
         <h1 className="t-display max-w-[16ch]">
           {progress.trend === null ? (
             <>

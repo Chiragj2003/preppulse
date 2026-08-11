@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { getSession } from "@/lib/session";
-import { BackButton } from "./back-button";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
@@ -18,16 +17,15 @@ export async function SiteHeader() {
       className="fixed inset-x-0 top-0 px-4 pt-4 sm:px-6 sm:pt-5"
       style={{ zIndex: "var(--z-sticky)" }}
     >
-      <div className="material m-frost m-refract mx-auto flex h-14 max-w-6xl items-center justify-between rounded-full border border-white/5 pr-2 pl-5 shadow-[var(--shadow-float)]">
+      <div className="mx-auto flex h-[64px] max-w-6xl items-center justify-between rounded-full border border-white/10 bg-gradient-to-r from-accent/5 via-indigo-500/5 to-purple-500/5 pr-3 pl-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-[32px] saturate-150 transition-all duration-300">
         <div className="flex items-center">
-          <BackButton />
           <Link
             href="/"
-            className="group relative flex items-center gap-2.5"
+            className="group relative flex items-center gap-3"
             aria-label="PrepPulse home"
           >
             <Pulse />
-            <span className="font-display text-[15.5px] font-medium tracking-[-0.02em]">
+            <span className="font-display text-[17px] font-semibold tracking-[-0.03em] text-ink transition-colors group-hover:text-accent">
               PrepPulse
             </span>
           </Link>

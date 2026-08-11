@@ -6,6 +6,8 @@ import { LANGUAGE_LABELS, type Language } from "@/lib/types";
 
 import { LanguageForm } from "./language-form";
 
+import { BackButton } from "@/components/back-button";
+
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
@@ -15,8 +17,14 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-5 pt-28 pb-24 sm:px-6">
-      <header className="rise">
-        <p className="t-micro mb-6">Settings</p>
+      <header className="rise relative">
+        <div className="absolute -left-12 top-0 hidden md:block">
+          <BackButton />
+        </div>
+        <p className="t-micro mb-6 flex items-center gap-3">
+          <span className="md:hidden"><BackButton /></span>
+          Settings
+        </p>
         <h1 className="t-display">
           Preferences
         </h1>
