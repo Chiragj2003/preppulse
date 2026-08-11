@@ -7,7 +7,8 @@ import { z } from "zod";
 
 import { db } from "@/db";
 import { discussionTurns, practiceSessions } from "@/db/schema";
-import { respondToDebate, respondToDiscussion } from "@/lib/ai/discussion";
+import { respondToDebate, respondToDiscussion, respondToScenario } from "@/lib/ai/discussion";
+import { scenarioById } from "@/lib/scenarios";
 import { AppError, toAppError, type AppErrorCode } from "@/lib/errors";
 import { gateOrRedirect } from "@/lib/gate";
 import { computeGdMetrics, countWordsIn, GD_PERSONAS, nextStage, type DebateStage } from "@/lib/gd-metrics";
@@ -112,9 +113,23 @@ export async function speak(
       .orderBy(asc(discussionTurns.position));
 
     const isDebate = session.mode === "debate";
+    const isRolePlay = session.mode === "scenario" || session.mode === "conversation";
     const stage = (history.at(-1)?.stage as DebateStage | undefined) ?? "opening";
 
-    const result = isDebate
+    const scenario = isRolePlay ? scenarioById(session.config?.scenarioId ?? "") : undefined;
+    if (isRolePlay && !scenario) {
+      throw new AppError("not_found", "That scenario no longer exists.");
+    }
+
+    const result = isRolePlay
+      ? await respondToScenario({
+          userId: user.id,
+          sessionId: session.id,
+          scenario: scenario!,
+          history: history.map((t) => ({ speaker: t.speaker, content: t.content })),
+          userTurn: input.content,
+        })
+      : isDebate
       ? await respondToDebate({
           userId: user.id,
           sessionId: session.id,

@@ -119,7 +119,7 @@ export function DailyRoll({
               ? { type: "spring", bounce: 0.38, duration: 0.85 }
               : { type: "spring", bounce: 0, duration: 0.42 }
           }
-          className="material m-dense relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-[var(--radius-lg)] px-8 py-14 sm:min-h-[340px] sm:px-14"
+          className="material m-dense relative flex <min-h-70></min-h-70> items-center justify-center overflow-hidden rounded-lg px-8 py-14 sm:min-h-85 sm:px-14"
           style={{ transformStyle: "preserve-3d" }}
         >
           {/* Light blooming from the top-left as the topic lands. */}

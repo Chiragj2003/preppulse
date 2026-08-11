@@ -20,8 +20,8 @@ for an interview this week.
 | 4 | Group Discussion + Debate (Groq) | Done |
 | 5 | Progress, gamification & Redis | Done (Redis optional — falls back to Postgres) |
 | 6 | Monetization scaffold | Done |
-| 7 | Conversation & real-world scenario modes | Not started |
-| 8 | Admin & cost tracking | Groundwork in place (`ai_usage` written on every call) |
+| 7 | Conversation & real-world scenario modes | Done |
+| 8 | Admin & cost tracking | Done |
 | 9 | Hinglish / Hindi language support | Groundwork in place (schema + prompt hooks) |
 | 10 | Polish pass | Not started |
 | 11 | Portfolio polish | Not started |
@@ -73,9 +73,10 @@ All secrets live in a single git-ignored `.env`. Only `DATABASE_URL`,
 | Command | Does |
 | --- | --- |
 | `npm run dev` | Dev server (Turbopack) |
-| `npm run build` | Production build |
+| `npm run dev:clean` | Deletes `.next` first — use after any `build` |
+| `npm run build` | Production build (never while `dev` is running) |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run test` | Five pure-logic suites (no framework, plain asserts) |
+| `npm run test` | Seven pure-logic suites (no framework, plain asserts) |
 | `npm run db:generate` | Generate SQL migration from the Drizzle schema |
 | `npm run db:migrate` | Apply migrations to Neon |
 | `npm run db:seed` | Load / refresh the topic pool (idempotent) |

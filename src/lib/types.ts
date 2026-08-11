@@ -188,4 +188,6 @@ export interface SessionConfig {
   /** Debate: the side the user argues. The AI automatically takes the other. */
   userStance?: "for" | "against";
   personaIds?: string[];
+  /** Conversation / scenario role-play. */
+  scenarioId?: string;
 }
