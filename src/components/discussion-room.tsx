@@ -3,10 +3,13 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { Mic, Send, Square } from "lucide-react";
 
 import { finishDiscussion, speak } from "@/app/discuss/actions";
 import { Button } from "@/components/ui/button";
+import { useSpeech } from "@/lib/use-speech";
+import { useTTS } from "@/lib/use-tts";
+import { Waveform } from "@/components/ui/waveform";
 import { ErrorState } from "@/components/ui/states";
 import { Surface } from "@/components/ui/surface";
 import {
@@ -64,6 +67,10 @@ export function DiscussionRoom({
     (initialTurns.at(-1)?.stage as DebateStage) ?? "opening",
   );
   const [done, setDone] = useState(completed);
+  const [typedMode, setTypedMode] = useState(false);
+  
+  const tts = useTTS();
+  const speech = useSpeech();
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const isDebate = mode === "debate";
@@ -86,8 +93,12 @@ export function DiscussionRoom({
   }, [turns.length, reduceMotion]);
 
   async function send() {
-    const content = draft.trim();
+    const content = typedMode ? draft.trim() : `${speech.finalText} ${speech.interimText}`.trim();
     if (!content || busy) return;
+
+    if (!typedMode) {
+      speech.reset();
+    }
 
     setBusy(true);
     setError(null);
@@ -141,9 +152,16 @@ export function DiscussionRoom({
 
     if (result.data.stage) setStage(result.data.stage);
     if (result.data.finished) setDone(true);
+    
+    // Read the panel's replies aloud
+    result.data.replies.forEach((reply) => {
+      tts.speak(reply.content);
+    });
   }
 
   async function end() {
+    tts.stop();
+    speech.stop();
     setBusy(true);
     const result = await finishDiscussion(sessionId);
     setBusy(false);
@@ -257,32 +275,79 @@ export function DiscussionRoom({
           style={{ zIndex: "var(--z-sticky)" }}
         >
           <Surface material="frost" radius="lg" className="mx-auto max-w-3xl p-3">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  // Enter sends, Shift+Enter breaks the line. In a fast-moving
-                  // discussion, reaching for a button every turn kills momentum.
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                rows={2}
-                placeholder={isDebate ? `Your ${stage}...` : "Make your point..."}
-                className="t-body max-h-40 min-h-[3.5rem] flex-1 resize-none bg-transparent px-3 py-2.5 text-ink outline-none placeholder:text-ink-4"
-              />
-              <Button
-                variant="primary"
-                onClick={() => void send()}
-                loading={busy}
-                disabled={!draft.trim()}
-                icon={<Send className="size-4" />}
-              >
-                Say it
-              </Button>
-            </div>
+            {!typedMode ? (
+              <div className="flex items-center gap-4 py-2 px-3">
+                <Button
+                  variant="primary"
+                  onClick={() => (speech.interimText || speech.finalText ? send() : speech.start())}
+                  loading={busy}
+                  disabled={!speech.supported}
+                  icon={speech.interimText || speech.finalText ? <Send className="size-4" /> : <Mic className="size-4" />}
+                >
+                  {speech.interimText || speech.finalText ? "Send" : "Speak"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => speech.stop()}
+                  disabled={!speech.interimText && !speech.finalText}
+                  icon={<Square className="size-4" />}
+                  aria-label="Stop recording"
+                />
+                <div className="flex-1 overflow-hidden h-6 flex items-center justify-center relative">
+                  {(speech.interimText || speech.finalText) ? (
+                    <p className="t-body truncate text-ink">
+                      {speech.finalText} {speech.interimText}
+                    </p>
+                  ) : (
+                    <Waveform active={true} />
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="pressable t-meta text-ink-4 hover:text-ink-2"
+                  onClick={() => {
+                    speech.stop();
+                    setTypedMode(true);
+                  }}
+                >
+                  Type instead
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void send();
+                    }
+                  }}
+                  rows={2}
+                  placeholder={isDebate ? `Your ${stage}...` : "Make your point..."}
+                  className="t-body max-h-40 min-h-[3.5rem] flex-1 resize-none bg-transparent px-3 py-2.5 text-ink outline-none placeholder:text-ink-4"
+                />
+                <div className="flex flex-col gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={() => void send()}
+                    loading={busy}
+                    disabled={!draft.trim()}
+                    icon={<Send className="size-4" />}
+                  >
+                    Say it
+                  </Button>
+                  <button
+                    type="button"
+                    className="pressable t-meta text-ink-4 hover:text-ink-2 self-center"
+                    onClick={() => setTypedMode(false)}
+                  >
+                    Speak
+                  </button>
+                </div>
+              </div>
+            )}
           </Surface>
 
           <div className="mx-auto mt-3 flex max-w-3xl justify-center">

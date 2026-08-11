@@ -100,6 +100,26 @@ export default async function DashboardPage() {
         </div>
       </section>
 
+      {/* ── Mock Attempt History Graph ─────────────────────────────────────── */}
+      {scored.length > 0 && (
+        <section className="rise mt-14 [animation-delay:140ms]">
+          <p className="t-micro mb-6">Score Progression</p>
+          <Surface material="frost" radius="lg" className="h-48 p-6 flex items-end gap-2 overflow-x-auto">
+            {scored.slice().reverse().map((session) => (
+              <div key={session.id} className="group relative flex flex-1 h-full min-w-[24px] max-w-[48px] items-end">
+                <div 
+                  className="w-full rounded-t-sm bg-accent/40 transition-all duration-500 group-hover:bg-accent"
+                  style={{ height: `${session.overallScore}%` }}
+                />
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-100 bg-black text-white text-xs py-1 px-2 rounded pointer-events-none">
+                  {session.overallScore}
+                </div>
+              </div>
+            ))}
+          </Surface>
+        </section>
+      )}
+
       {/* ── Other Rooms: Features the user was looking for ───────────────── */}
       <section className="rise mt-16 [animation-delay:150ms]">
         <p className="t-micro mb-6">Other practice modes</p>

@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { Surface } from "@/components/ui/surface";
 import { checkCanStart } from "@/lib/gate";
 import { GD_PERSONAS } from "@/lib/gd-metrics";
 import { getRandomTopic } from "@/lib/practice";
 import { requireUser } from "@/lib/session";
+import { PersonaSelector } from "@/components/persona-selector";
 import { startDiscussion } from "./actions";
 
 export const metadata: Metadata = { title: "Group discussion" };
@@ -51,18 +53,7 @@ export default async function DiscussSetupPage({
 
       {!debate && (
         <section className="rise mt-14 [animation-delay:80ms]">
-          <p className="t-micro mb-5">Who&apos;s in the room</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {GD_PERSONAS.map((persona) => (
-              <Surface key={persona.id} material="liquid" radius="md" className="p-5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="t-heading">{persona.name}</p>
-                  <span className="t-micro">{persona.trait}</span>
-                </div>
-                <p className="t-meta mt-2">{persona.instruction}</p>
-              </Surface>
-            ))}
-          </div>
+          <PersonaSelector personas={GD_PERSONAS} />
         </section>
       )}
 
@@ -70,7 +61,19 @@ export default async function DiscussSetupPage({
         <input type="hidden" name="mode" value={debate ? "debate" : "group_discussion"} />
         {topic && <input type="hidden" name="topicId" value={topic.id} />}
 
-        <p className="t-micro mb-5">{debate ? "The motion" : "The topic"}</p>
+        <div className="mb-5 flex items-center justify-between">
+          <p className="t-micro">{debate ? "The motion" : "The topic"}</p>
+          <Link
+            href={`/discuss?mode=${debate ? "debate" : "group_discussion"}&roll=${Date.now()}`}
+            scroll={false}
+            className="group flex items-center gap-2 rounded-full border border-line bg-black/20 px-3 py-1.5 text-xs text-ink-3 transition-colors hover:border-accent/30 hover:text-accent"
+          >
+            <span>Spin the wheel</span>
+            <span className="transition-transform group-hover:rotate-180 duration-500">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+            </span>
+          </Link>
+        </div>
         <Surface material="dense" radius="lg" refract className="p-7 sm:p-9">
           <p className="t-title">{topic?.promptText ?? "No topics seeded yet."}</p>
         </Surface>
@@ -91,7 +94,7 @@ export default async function DiscussSetupPage({
                   <Surface
                     material="liquid"
                     radius="md"
-                    className="p-5 text-center transition-colors peer-checked:bg-accent-wash/40 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
+                    className="p-5 text-center transition-all peer-checked:ring-2 peer-checked:ring-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
                   >
                     <p className="t-heading capitalize">{side}</p>
                   </Surface>
@@ -112,9 +115,9 @@ export default async function DiscussSetupPage({
               </Link>
             </div>
           ) : (
-            <Button type="submit" variant="primary" size="lg" disabled={!topic}>
+            <SubmitButton variant="primary" size="lg" disabled={!topic}>
               {debate ? "Start the debate" : "Join the discussion"}
-            </Button>
+            </SubmitButton>
           )}
         </div>
       </form>

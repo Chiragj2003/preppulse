@@ -55,6 +55,12 @@ export function UserMenu({
           >
             Settings
           </a>
+          <a
+            href="/interview-prep"
+            className="pressable block w-full rounded-[var(--radius-xs)] px-3 py-2.5 text-left text-[13.5px] text-ink-2 hover:bg-white/5 hover:text-ink"
+          >
+            Profile & Resume
+          </a>
           <button
             type="button"
             onClick={handleSignOut}

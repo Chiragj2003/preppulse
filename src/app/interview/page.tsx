@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { Surface } from "@/components/ui/surface";
 import { checkCanStart } from "@/lib/gate";
 import { getProfile } from "@/lib/practice";
@@ -90,7 +91,7 @@ export default async function InterviewSetupPage() {
                 <Surface
                   material="liquid"
                   radius="md"
-                  className="h-full p-5 transition-colors peer-checked:bg-accent-wash/40 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
+                  className="h-full p-5 transition-all peer-checked:ring-2 peer-checked:ring-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
                 >
                   <p className="t-heading">{PERSONA_LABELS[persona]}</p>
                   <p className="t-meta mt-1.5">{PERSONA_BLURBS[persona]}</p>
@@ -130,7 +131,7 @@ export default async function InterviewSetupPage() {
               className="w-full appearance-none rounded-[var(--radius-xs)] border border-line bg-black/25 px-4 py-3.5 text-[15px] outline-none focus:border-accent"
             >
               {[5, 8, 10, 12, 15].map((n) => (
-                <option key={n} value={n}>
+                <option key={n} value={n} className="bg-black text-ink">
                   {n} questions
                 </option>
               ))}
@@ -140,9 +141,9 @@ export default async function InterviewSetupPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-6 border-t border-line pt-8">
-          <Button type="submit" variant="primary" size="lg">
+          <SubmitButton variant="primary" size="lg">
             Begin the interview
-          </Button>
+          </SubmitButton>
           <p className="t-meta max-w-xs text-ink-4">
             Questions are written for you before you start, so the set is fixed.
           </p>

@@ -32,24 +32,7 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-1.5">
           {session?.user ? (
             <>
-              <Link
-                href="/practice"
-                className="pressable hidden rounded-full px-4 py-2 text-[14px] text-ink-2 hover:bg-white/5 hover:text-ink sm:block"
-              >
-                Practice
-              </Link>
-              <Link
-                href="/progress"
-                className="pressable hidden rounded-full px-4 py-2 text-[14px] text-ink-2 hover:bg-white/5 hover:text-ink sm:block"
-              >
-                Progress
-              </Link>
-              <Link
-                href="/dashboard"
-                className="pressable rounded-full px-4 py-2 text-[14px] text-ink-2 hover:bg-white/5 hover:text-ink"
-              >
-                Dashboard
-              </Link>
+
               <ThemeToggle />
               <UserMenu
                 name={session.user.name}
