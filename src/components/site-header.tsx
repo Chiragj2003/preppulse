@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getSession } from "@/lib/session";
+import { BackButton } from "./back-button";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
@@ -18,21 +19,28 @@ export async function SiteHeader() {
       style={{ zIndex: "var(--z-sticky)" }}
     >
       <div className="material m-frost m-refract mx-auto flex h-14 max-w-6xl items-center justify-between rounded-full border border-white/5 pr-2 pl-5 shadow-[var(--shadow-float)]">
-        <Link
-          href="/"
-          className="group relative flex items-center gap-2.5"
-          aria-label="PrepPulse home"
-        >
-          <Pulse />
-          <span className="font-display text-[15.5px] font-medium tracking-[-0.02em]">
-            PrepPulse
-          </span>
-        </Link>
+        <div className="flex items-center">
+          <BackButton />
+          <Link
+            href="/"
+            className="group relative flex items-center gap-2.5"
+            aria-label="PrepPulse home"
+          >
+            <Pulse />
+            <span className="font-display text-[15.5px] font-medium tracking-[-0.02em]">
+              PrepPulse
+            </span>
+          </Link>
+        </div>
 
-        <nav className="flex items-center gap-1.5">
+        <nav className="flex items-center gap-1.5 sm:gap-2">
           {session?.user ? (
             <>
-
+              <div className="hidden items-center gap-1 sm:flex mr-2">
+                <Link href="/dashboard" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Dashboard</Link>
+                <Link href="/practice" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Practice</Link>
+                <Link href="/discuss" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Discuss</Link>
+              </div>
               <ThemeToggle />
               <UserMenu
                 name={session.user.name}
