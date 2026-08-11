@@ -44,6 +44,7 @@ export function DiscussionRoom({
   mode,
   stance,
   counterpartName,
+  language,
   completed,
   initialTurns,
 }: {

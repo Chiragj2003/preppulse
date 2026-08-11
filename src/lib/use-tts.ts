@@ -55,7 +55,7 @@ export function useTTS(language?: string) {
     };
 
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [language]);
 
   const speak = useCallback(
     (text: string, clearQueue = false) => {
