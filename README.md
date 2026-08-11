@@ -16,8 +16,8 @@ for an interview this week.
 | --- | --- | --- |
 | 1 | Foundation — auth, schema, rate limiting, landing + dashboard | Done |
 | 2 | Random Topic / Extempore + Daily Roll (Groq) | Done |
-| 3 | Mock Interview (Gemini) + resume-driven recommendation | Not started |
-| 4 | Group Discussion + Debate (Groq) | Not started |
+| 3 | Mock Interview (Gemini) + resume-driven recommendation | Done |
+| 4 | Group Discussion + Debate (Groq) | Done |
 | 5 | Progress, gamification & Redis | Not started |
 | 6 | Monetization scaffold | Not started |
 | 7 | Conversation & real-world scenario modes | Not started |
@@ -74,7 +74,7 @@ All secrets live in a single git-ignored `.env`. Only `DATABASE_URL`,
 | `npm run dev` | Dev server (Turbopack) |
 | `npm run build` | Production build |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run test` | Scoring-engine self-check (no framework, plain asserts) |
+| `npm run test` | Three pure-logic suites (no framework, plain asserts) |
 | `npm run db:generate` | Generate SQL migration from the Drizzle schema |
 | `npm run db:migrate` | Apply migrations to Neon |
 | `npm run db:seed` | Load / refresh the topic pool (idempotent) |
@@ -140,6 +140,14 @@ accessibility fallback. Evaluations now record how the answer arrived, and
 The report shows `n/a` and says why. Regression covered in `scoring.test.ts`.
 
 ---
+
+## Further reading
+
+| Document | What's in it |
+| --- | --- |
+| [decisions.md](decisions.md) | Every meaningful decision, why it was taken, what was rejected, and how to reverse it |
+| [flow.md](flow.md) | System design, data model, and sequence diagrams for each mode |
+| [quiz.md](quiz.md) | Study questions for learning the codebase and defending it in an interview |
 
 ## Notes
 

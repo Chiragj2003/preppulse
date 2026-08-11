@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/lib/scoring.test.ts",
+    "test": "tsx src/lib/scoring.test.ts && tsx src/lib/interview-scoring.test.ts && tsx src/lib/gd-metrics.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
