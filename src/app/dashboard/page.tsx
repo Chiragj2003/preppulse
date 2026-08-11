@@ -100,6 +100,45 @@ export default async function DashboardPage() {
         </div>
       </section>
 
+      {/* ── Other Rooms: Features the user was looking for ───────────────── */}
+      <section className="rise mt-16 [animation-delay:150ms]">
+        <p className="t-micro mb-6">Other practice modes</p>
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              href: "/practice?mode=quick",
+              title: "Random Roll",
+              body: "A completely random impromptu topic instead of the daily roll.",
+            },
+            {
+              href: "/discuss",
+              title: "Group Discussion",
+              body: "Four AI panelists who argue with each other and you.",
+            },
+            {
+              href: "/discuss?mode=debate",
+              title: "Debate",
+              body: "Pick a side. Your opponent takes the other and never folds.",
+            },
+            {
+              href: "/rooms",
+              title: "Role Play",
+              body: "Workplace scenarios like salary negotiation or angry customers.",
+            },
+          ].map((room, i) => (
+            <li key={room.title}>
+              <Link
+                href={room.href}
+                className="group flex h-full flex-col justify-between gap-6 rounded-2xl border border-line bg-white/5 p-6 transition-colors hover:border-accent/50 hover:bg-white/[0.07]"
+              >
+                <h3 className="t-heading transition-colors group-hover:text-accent">{room.title}</h3>
+                <p className="t-body text-sm text-ink-3">{room.body}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       {/* ── History ──────────────────────────────────────────────────────── */}
       <section className="rise mt-16 [animation-delay:170ms]">
         <p className="t-micro mb-2">Recent</p>
@@ -140,28 +179,38 @@ export default async function DashboardPage() {
       </section>
 
       {/* ── Interview prep. Still secondary, even here. ──────────────────── */}
-      {!profile?.skillsDescription && !profile?.resumeExtractedData && (
-        <section className="rise mt-20 border-t border-line pt-10 [animation-delay:220ms]">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div className="max-w-lg">
-              <p className="t-micro mb-4">Also</p>
-              <h2 className="t-heading">Got an interview coming up?</h2>
-              <p className="t-body mt-2 text-ink-3">
-                Add what you do and PrepPulse can build mock rounds around your actual experience.
-              </p>
-            </div>
-            <Link
-              href="/interview-prep"
-              className="group inline-flex shrink-0 items-center gap-2.5 text-[14.5px] text-ink-2 transition-colors hover:text-accent"
-            >
-              <span className="border-b border-line-bright pb-1 transition-colors group-hover:border-accent">
-                Set it up
-              </span>
-              <ArrowUpRight className="size-3.5 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </Link>
+      <section className="rise mt-20 border-t border-line pt-10 [animation-delay:220ms]">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-lg">
+            <p className="t-micro mb-4">Also</p>
+            <h2 className="t-heading">
+              {!profile?.skillsDescription && !profile?.resumeExtractedData
+                ? "Got an interview coming up?"
+                : "Mock Interview"}
+            </h2>
+            <p className="t-body mt-2 text-ink-3">
+              {!profile?.skillsDescription && !profile?.resumeExtractedData
+                ? "Add what you do and PrepPulse can build mock rounds around your actual experience."
+                : "Personalised questions written exactly for your background and resume."}
+            </p>
           </div>
-        </section>
-      )}
+          <Link
+            href={
+              !profile?.skillsDescription && !profile?.resumeExtractedData
+                ? "/interview-prep"
+                : "/interview"
+            }
+            className="group inline-flex shrink-0 items-center gap-2.5 text-[14.5px] text-ink-2 transition-colors hover:text-accent"
+          >
+            <span className="border-b border-line-bright pb-1 transition-colors group-hover:border-accent">
+              {!profile?.skillsDescription && !profile?.resumeExtractedData
+                ? "Set it up"
+                : "Start mock round"}
+            </span>
+            <ArrowUpRight className="size-3.5 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
@@ -193,6 +242,15 @@ function greeting() {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function formatWhen(date: Date) {
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function statusLabel(status: string) {
