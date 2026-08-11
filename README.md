@@ -196,6 +196,7 @@ The report shows `n/a` and says why. Regression covered in `scoring.test.ts`.
 | [decisions.md](decisions.md) | Every meaningful decision, why it was taken, what was rejected, and how to reverse it |
 | [flow.md](flow.md) | System design, data model, and sequence diagrams for each mode |
 | [quiz.md](quiz.md) | Study questions for learning the codebase and defending it in an interview |
+| [writeup-scoring-engine.md](writeup-scoring-engine.md) | Deep dive: how the weighted scoring engine avoids trusting raw LLM output |
 
 ## Notes
 
