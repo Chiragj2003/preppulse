@@ -32,18 +32,24 @@ interface Turn {
  * of the floor the user is taking — the metric that actually changes behaviour
  * mid-discussion, since both silence and dominating cost you.
  */
+export type RoomMode = "group_discussion" | "debate" | "conversation" | "scenario";
+
 export function DiscussionRoom({
   sessionId,
   topic,
+  title,
   mode,
   stance,
+  counterpartName,
   completed,
   initialTurns,
 }: {
   sessionId: string;
   topic: string;
-  mode: "group_discussion" | "debate";
+  title?: string;
+  mode: RoomMode;
   stance: "for" | "against";
+  counterpartName?: string;
   completed: boolean;
   initialTurns: Turn[];
 }) {
@@ -61,6 +67,7 @@ export function DiscussionRoom({
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const isDebate = mode === "debate";
+  const isRolePlay = mode === "scenario" || mode === "conversation";
 
   const metrics = computeGdMetrics(
     turns.map((t) => ({
@@ -153,11 +160,21 @@ export function DiscussionRoom({
       {/* Topic + live standing */}
       <header className="rise">
         <p className="t-micro mb-5">
-          {isDebate ? `Debate / you are ${stance}` : "Group discussion"}
+          {isDebate
+            ? `Debate / you are ${stance}`
+            : isRolePlay
+              ? (title ?? "Role play")
+              : "Group discussion"}
           {isDebate && (
             <>
               <span className="mx-3 text-ink-4">/</span>
               <span className="text-accent">{stage}</span>
+            </>
+          )}
+          {isRolePlay && counterpartName && (
+            <>
+              <span className="mx-3 text-ink-4">/</span>
+              <span className="text-ink-2">with {counterpartName}</span>
             </>
           )}
         </p>
@@ -165,12 +182,16 @@ export function DiscussionRoom({
         {isDebate && <p className="t-meta mt-4">{STAGE_BRIEF[stage]}</p>}
       </header>
 
-      <div className="mt-8 flex flex-wrap items-baseline gap-x-10 gap-y-4 border-y border-line py-5">
-        <Figure value={`${metrics.speakingSharePct}%`} label="your airtime" />
-        <Figure value={metrics.argumentsIntroduced} label="arguments" />
-        <Figure value={metrics.directRebuttals} label="rebuttals" />
-        <span className="t-meta ml-auto text-ink-4">{presence.label}</span>
-      </div>
+      {/* Role-play is judged on how it went, not on airtime — a negotiation
+          where you spoke 70% is not automatically a failure. */}
+      {!isRolePlay && (
+        <div className="mt-8 flex flex-wrap items-baseline gap-x-10 gap-y-4 border-y border-line py-5">
+          <Figure value={`${metrics.speakingSharePct}%`} label="your airtime" />
+          <Figure value={metrics.argumentsIntroduced} label="arguments" />
+          <Figure value={metrics.directRebuttals} label="rebuttals" />
+          <span className="t-meta ml-auto text-ink-4">{presence.label}</span>
+        </div>
+      )}
 
       {/* Transcript */}
       <div className="mt-10 space-y-7">
@@ -178,7 +199,9 @@ export function DiscussionRoom({
           <p className="t-lead text-ink-4">
             {isDebate
               ? "Open the debate. State your position and the ground you'll fight on."
-              : "Open the discussion. Say what you think and why."}
+              : isRolePlay
+                ? "They've opened. Reply as you actually would."
+                : "Open the discussion. Say what you think and why."}
           </p>
         )}
 
@@ -187,7 +210,9 @@ export function DiscussionRoom({
           const isUser = turn.speaker === null;
           const name = isUser
             ? "You"
-            : (persona?.name ?? (turn.speaker === "opponent" ? "Opponent" : turn.speaker));
+            : (persona?.name ??
+              counterpartName ??
+              (turn.speaker === "opponent" ? "Opponent" : turn.speaker));
 
           return (
             <motion.div

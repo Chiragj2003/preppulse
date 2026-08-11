@@ -48,10 +48,11 @@ export const SEED_PLANS: SeedPlan[] = [
       "Unlimited sessions",
       "Mock interviews from your resume",
       "Group discussion and debate",
+      "Conversation practice",
       "Shareable result cards",
     ],
     dailySessionLimit: null,
-    unlockedModes: ["interview", "group_discussion", "debate"],
+    unlockedModes: ["interview", "group_discussion", "debate", "conversation"],
     sortOrder: 1,
   },
   {

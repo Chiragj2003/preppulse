@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { DiscussionRoom } from "@/components/discussion-room";
+import { DiscussionRoom, type RoomMode } from "@/components/discussion-room";
+import { scenarioById } from "@/lib/scenarios";
 import { requireUser } from "@/lib/session";
 import { getDiscussion } from "../actions";
 
@@ -15,11 +16,15 @@ export default async function DiscussionRoomPage({
   const user = await requireUser(`/discuss/${sessionId}`);
   const { session, turns } = await getDiscussion(sessionId, user.id);
 
+  const scenario = session.config?.scenarioId ? scenarioById(session.config.scenarioId) : null;
+
   return (
     <DiscussionRoom
       sessionId={session.id}
-      topic={session.promptSnapshot ?? "the topic"}
-      mode={session.mode === "debate" ? "debate" : "group_discussion"}
+      topic={scenario?.objective ?? session.promptSnapshot ?? "the topic"}
+      title={scenario?.title ?? session.promptSnapshot ?? undefined}
+      mode={session.mode as RoomMode}
+      counterpartName={scenario?.counterpart.name}
       stance={session.config?.userStance ?? "for"}
       completed={session.status === "completed"}
       initialTurns={turns.map((t) => ({

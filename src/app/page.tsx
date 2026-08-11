@@ -92,7 +92,7 @@ export default async function HomePage() {
       {/* ── The other rooms ──────────────────────────────────────────────── */}
       <section className="py-24 sm:py-32">
         <p className="t-micro mb-12">Other rooms</p>
-        <ul className="grid gap-px sm:grid-cols-3">
+        <ul className="grid gap-px sm:grid-cols-2 lg:grid-cols-4">
           {[
             {
               href: session?.user ? "/discuss" : "/sign-in?next=/discuss",
@@ -108,6 +108,11 @@ export default async function HomePage() {
               href: session?.user ? "/interview" : "/sign-in?next=/interview",
               title: "Mock interview",
               body: "Questions written from your own background, judged one at a time.",
+            },
+            {
+              href: session?.user ? "/rooms" : "/sign-in?next=/rooms",
+              title: "Role play",
+              body: "Push back on a manager. Calm an angry customer. Ask for more money.",
             },
           ].map((room, i) => (
             <li key={room.title}>
