@@ -53,16 +53,16 @@
   --color-line-bright: oklch(33% 0.01 285);
 
   /* -- Type families ------------------------------------------------------ */
-  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
 
   /* -- Radius ------------------------------------------------------------- */
-  --radius-xs: 10px;
-  --radius-sm: 14px;
-  --radius-md: 20px;
-  --radius-lg: 28px;
-  --radius-xl: 40px;
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
 
   /* -- Depth --------------------------------------------------------------
      Shadows are large, soft and very dark. On a near-black substrate a tight
@@ -358,6 +358,41 @@
     pointer-events: none;
   }
 
+  /* LIQUID GLASS: The 3D premium Apple-style spatial material from design reference */
+  .liquid-glass {
+    background: rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(40px) saturate(160%);
+    -webkit-backdrop-filter: blur(40px) saturate(160%);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 
+      0 20px 40px -10px rgba(0, 0, 0, 0.5),
+      inset 0 2px 10px rgba(255, 255, 255, 0.1),
+      inset 0 -2px 10px rgba(0, 0, 0, 0.2);
+    transition: all var(--dur-base) var(--ease-out);
+    overflow: hidden;
+  }
+  
+  /* Specular inner highlight for 3D rounded edge */
+  .liquid-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .liquid-glass-inner {
+    box-shadow: inset 0 4px 20px rgba(255, 255, 255, 0.05),
+                0 10px 30px rgba(0,0,0,0.3);
+  }
+
   /* =========================================================================
      INTERACTION
      ========================================================================= */
@@ -399,6 +434,7 @@
   .atmosphere {
     position: relative;
     isolation: isolate;
+    background-color: var(--color-void);
   }
   .atmosphere::before {
     content: "";
@@ -406,9 +442,10 @@
     inset: 0;
     z-index: -2;
     background:
-      radial-gradient(70% 55% at 18% -8%, oklch(30% 0.055 296 / 0.5), transparent 62%),
-      radial-gradient(52% 45% at 88% 6%, oklch(26% 0.035 250 / 0.38), transparent 60%),
-      radial-gradient(90% 70% at 50% 108%, oklch(20% 0.03 296 / 0.35), transparent 65%);
+      radial-gradient(80% 60% at 15% 10%, oklch(40% 0.1 290 / 0.15), transparent 70%),
+      radial-gradient(70% 60% at 85% 85%, oklch(35% 0.08 260 / 0.12), transparent 60%),
+      radial-gradient(60% 50% at 50% 110%, oklch(45% 0.12 296 / 0.15), transparent 65%);
+    animation: slow-orb 30s ease-in-out infinite alternate;
     pointer-events: none;
   }
 
@@ -452,6 +489,12 @@
   .unblur {
     animation: unblur var(--dur-cinematic) var(--ease-out) backwards;
   }
+}
+
+@keyframes slow-orb {
+  0% { transform: scale(1) translate(0, 0); }
+  50% { transform: scale(1.05) translate(2%, 3%); }
+  100% { transform: scale(1.1) translate(-2%, -2%); }
 }
 
 @keyframes rise {

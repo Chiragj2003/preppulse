@@ -5,6 +5,7 @@ import { Surface } from "@/components/ui/surface";
 import { getLeaderboard } from "@/lib/leaderboard";
 import { getDailyTopic } from "@/lib/practice";
 import { getSession } from "@/lib/session";
+import { TopicRoller } from "@/components/topic-roller";
 
 /**
  * Editorial introduction, composed rather than stacked.
@@ -25,8 +26,8 @@ export default async function HomePage() {
   return (
     <div className="mx-auto max-w-6xl px-5 sm:px-6">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="flex min-h-[92dvh] flex-col justify-center pt-28 pb-16">
-        <p className="t-micro rise mb-10">
+      <section className="flex min-h-[85dvh] flex-col justify-center pt-24 pb-12">
+        <p className="t-micro rise mb-8">
           Daily speaking practice
           <span className="mx-3 text-ink-4">/</span>
           <span className="text-ink-2">
@@ -34,7 +35,7 @@ export default async function HomePage() {
           </span>
         </p>
 
-        <h1 className="t-display rise max-w-[15ch] [animation-delay:60ms]">
+        <h1 className="t-display rise max-w-[15ch] [animation-delay:60ms] leading-[1.05] tracking-tight">
           Two minutes
           <br />
           <span className="text-ink-3">of talking</span>
@@ -44,85 +45,58 @@ export default async function HomePage() {
           you sound.
         </h1>
 
-        <div className="mt-14 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end">
-          <p className="t-lead rise max-w-md [animation-delay:140ms]">
-            A topic you didn&apos;t see coming. A clock. Then an honest read on where you landed it,
-            where you rambled, and where the filler crept in.
-          </p>
+        <p className="t-lead rise mt-8 max-w-lg text-[16px] [animation-delay:120ms]">
+          A topic you didn&apos;t see coming. A clock. Then an honest read on where you landed it, where you rambled, and where the filler crept in.
+        </p>
 
-          <div className="rise flex items-center gap-4 [animation-delay:200ms]">
-            <Link
-              href={start}
-              className="pressable group inline-flex h-[58px] items-center gap-3 rounded-full bg-accent pr-3 pl-7 text-[16px] font-medium text-void shadow-[var(--shadow-accent)] hover:brightness-110"
-            >
-              Start today&apos;s roll
-              <span className="grid size-10 place-items-center rounded-full bg-void/15 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5">
-                <ArrowUpRight className="size-4.5" />
-              </span>
-            </Link>
-          </div>
+        <div className="rise [animation-delay:180ms] w-full">
+          {topic && <TopicRoller topic={topic} />}
         </div>
-
-        {/* Today's actual topic, sitting in the hero as evidence. */}
-        {topic && (
-          <Surface
-            material="dense"
-            radius="lg"
-            refract
-            className="unblur mt-16 overflow-hidden [animation-delay:280ms]"
-          >
-            <div className="relative flex flex-col gap-6 p-7 sm:flex-row sm:items-center sm:justify-between sm:p-9">
-              <div className="max-w-2xl">
-                <p className="t-micro mb-4">Today, everyone gets</p>
-                <p className="t-title text-ink">{topic.promptText}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-8 sm:flex-col sm:items-end sm:gap-2">
-                <div className="text-right">
-                  <p className="t-numeric text-[28px] leading-none">2:00</p>
-                  <p className="t-micro mt-2">on the clock</p>
-                </div>
-              </div>
-            </div>
-          </Surface>
-        )}
       </section>
 
       <div className="rule" />
 
       {/* ── The other rooms ──────────────────────────────────────────────── */}
-      <section className="py-24 sm:py-32">
-        <p className="t-micro mb-12">Other rooms</p>
-        <ul className="grid gap-px sm:grid-cols-2 lg:grid-cols-4">
+      <section className="py-16 sm:py-20">
+        <p className="t-micro mb-8">Other rooms</p>
+        <ul className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-6 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:pb-0 hide-scrollbar">
           {[
             {
               href: session?.user ? "/discuss" : "/sign-in?next=/discuss",
               title: "Group discussion",
-              body: "Four panelists who argue with each other as well as with you.",
+              body: "Four panelists who argue with each other.",
+              icon: "👥",
             },
             {
               href: session?.user ? "/discuss?mode=debate" : "/sign-in?next=/discuss",
               title: "Debate",
-              body: "Pick a side. Your opponent takes the other and never folds.",
+              body: "Pick a side. Your opponent never folds.",
+              icon: "⚖️",
             },
             {
               href: session?.user ? "/interview" : "/sign-in?next=/interview",
               title: "Mock interview",
-              body: "Questions written from your own background, judged one at a time.",
+              body: "Questions from your own background.",
+              icon: "🎙️",
             },
             {
               href: session?.user ? "/rooms" : "/sign-in?next=/rooms",
               title: "Role play",
-              body: "Push back on a manager. Calm an angry customer. Ask for more money.",
+              body: "Push back, negotiate, or resolve.",
+              icon: "🎭",
             },
           ].map((room, i) => (
-            <li key={room.title}>
+            <li key={room.title} className="min-w-[260px] snap-start sm:min-w-0">
               <Link
                 href={room.href}
-                className="group flex h-full flex-col justify-between gap-10 border-t border-line py-8 pr-6 transition-colors hover:border-accent/50"
+                className="liquid-glass group flex h-full flex-col gap-4 p-5 transition-transform hover:-translate-y-1 hover:border-accent/30"
                 style={{ animationDelay: `${i * 70}ms` }}
               >
-                <h3 className="t-heading transition-colors group-hover:text-accent">{room.title}</h3>
-                <p className="t-body max-w-xs text-ink-3">{room.body}</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{room.icon}</span>
+                  <h3 className="font-display text-[15px] font-medium transition-colors group-hover:text-accent">{room.title}</h3>
+                </div>
+                <p className="t-body text-[14px] leading-snug text-ink-3">{room.body}</p>
               </Link>
             </li>
           ))}
@@ -131,36 +105,43 @@ export default async function HomePage() {
 
       <div className="rule" />
 
-      {/* ── How it works: numbered editorial rows, not a three-card grid ─── */}
-      <section className="py-24 sm:py-32">
-        <p className="t-micro mb-14">How a session goes</p>
+      {/* ── How it works: horizontal timeline ─── */}
+      <section className="py-16 sm:py-20">
+        <p className="t-micro mb-10">How a session goes</p>
 
-        <ol className="space-y-px">
+        <ol className="flex flex-col sm:flex-row items-start gap-8 sm:gap-4 lg:gap-12 relative">
+          {/* Timeline connector (desktop only) */}
+          <div className="hidden sm:block absolute top-[14px] left-8 right-8 h-px bg-gradient-to-r from-line via-line-bright to-transparent z-[-1]" />
+          
           {[
             {
               n: "01",
               t: "Roll",
-              d: "The day's topic reveals itself. No browsing, no picking the easy one, no stalling.",
+              d: "The day's topic reveals itself. No stalling.",
             },
             {
               n: "02",
               t: "Speak",
-              d: "Thirty seconds to think, two minutes to talk. Your microphone transcribes as you go.",
+              d: "Two minutes to talk. Transcribed live.",
             },
             {
               n: "03",
               t: "Read the tape",
-              d: "Six measures, your filler words in context, and your own answer with the slack taken out.",
+              d: "See your filler words and honest metrics.",
             },
           ].map((step, i) => (
             <li
               key={step.n}
-              className="rise group grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 border-t border-line py-8 sm:grid-cols-[5rem_14rem_1fr] sm:gap-x-10"
+              className="rise group flex flex-col gap-3 flex-1"
               style={{ animationDelay: `${i * 80}ms` }}
             >
-              <span className="t-numeric text-[13px] text-ink-4">{step.n}</span>
-              <h3 className="t-title text-ink">{step.t}</h3>
-              <p className="t-body col-span-2 max-w-md text-ink-3 sm:col-span-1">{step.d}</p>
+              <div className="size-8 rounded-full bg-base border border-line flex items-center justify-center shadow-sm">
+                <span className="t-numeric text-[12px] text-ink-3">{step.n}</span>
+              </div>
+              <div>
+                <h3 className="t-title text-[18px] text-ink mb-1">{step.t}</h3>
+                <p className="t-body text-[14px] leading-relaxed text-ink-3 max-w-[250px]">{step.d}</p>
+              </div>
             </li>
           ))}
         </ol>
@@ -168,57 +149,53 @@ export default async function HomePage() {
 
       <div className="rule" />
 
-      {/* ── Interview prep: the secondary movement, visibly separate ─────── */}
-      <section id="interview" className="scroll-mt-28 py-24 sm:py-32">
-        <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-20">
-          <div>
-            <p className="t-micro mb-6">Also, when you need it</p>
-            <h2 className="t-display max-w-[12ch]">
+      {/* ── Interview prep: compact liquid glass panel ─────── */}
+      <section id="interview" className="scroll-mt-24 py-16 sm:py-20">
+        <div className="liquid-glass flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8 p-8 sm:p-10 border-accent/10">
+          <div className="flex-1">
+            <p className="t-micro text-accent mb-4">Also, when you need it</p>
+            <h2 className="font-display text-3xl sm:text-4xl font-medium tracking-tight max-w-[12ch] mb-4">
               Got an interview <span className="text-ink-3">this week?</span>
             </h2>
+            <p className="t-body max-w-md text-[15px] text-ink-3">
+              Upload your resume. PrepPulse creates real questions and analyzes each answer live.
+            </p>
           </div>
 
-          <div className="flex flex-col items-start justify-end gap-7">
-            <p className="t-lead max-w-md">
-              Tell PrepPulse what you actually do, or hand it your resume. It works out what
-              you&apos;d really be asked and runs the round question by question — analysing each
-              answer as you give it, not at the end.
-            </p>
+          <div className="shrink-0">
             <Link
               href={session?.user ? "/interview-prep" : "/sign-in?next=/interview-prep"}
-              className="group inline-flex items-center gap-2.5 text-[15px] text-ink transition-colors hover:text-accent"
+              className="group inline-flex h-12 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 font-medium text-ink transition-all hover:bg-white/10 hover:border-white/20 active:scale-95"
             >
-              <span className="border-b border-ink-4 pb-1 transition-colors group-hover:border-accent">
-                Set up interview prep
-              </span>
-              <ArrowUpRight className="size-4 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              <span>Set up interview prep</span>
+              <ArrowUpRight className="size-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Leaderboard: on the homepage on purpose, to give returning users a
-          reason to come back and signed-out visitors a reason to start. */}
+      {/* Leaderboard: compressed rows */}
       {board.length > 0 && (
         <>
           <div className="rule" />
-          <section className="py-24 sm:py-32">
-            <div className="mb-10 flex flex-wrap items-baseline justify-between gap-4">
+          <section className="py-16 sm:py-20">
+            <div className="mb-8 flex flex-wrap items-baseline justify-between gap-4">
               <p className="t-micro">This week&apos;s best scores</p>
-              <p className="t-meta text-ink-4">Top score in the last seven days</p>
             </div>
 
-            <ol className="divide-y divide-line/70 border-t border-line">
+            <ol className="flex flex-col gap-1">
               {board.map((row) => (
-                <li key={row.userId} className="flex items-baseline gap-6 py-5">
-                  <span className="t-numeric w-8 shrink-0 text-[15px] text-ink-4">{row.rank}</span>
-                  <span className="t-body flex-1 text-ink-2">{row.name}</span>
-                  <span className="t-numeric text-[20px]">{row.score}</span>
+                <li key={row.userId} className="liquid-glass flex items-center justify-between px-5 py-3.5 rounded-xl border-white/5 bg-white/[0.02] hover:bg-white/[0.04]">
+                  <div className="flex items-center gap-5">
+                    <span className="t-numeric w-5 text-center text-[13px] text-ink-4">{row.rank}</span>
+                    <span className="font-display font-medium text-[15px] text-ink-2">{row.name}</span>
+                  </div>
+                  <span className="t-numeric text-[18px] text-ink">{row.score}</span>
                 </li>
               ))}
             </ol>
 
-            <p className="t-meta mt-8">
+            <p className="t-meta mt-6">
               <Link href={start} className="text-accent hover:underline">
                 Put your name on it
               </Link>
@@ -227,16 +204,16 @@ export default async function HomePage() {
         </>
       )}
 
-      <footer className="flex flex-col gap-3 border-t border-line py-10 sm:flex-row sm:items-center sm:justify-between">
-        <p className="t-micro">PrepPulse</p>
-        <div className="flex flex-wrap items-center gap-6">
-          <Link href="/pricing" className="t-meta text-ink-4 transition-colors hover:text-ink-2">
+      <footer className="flex flex-col gap-2 py-8 sm:flex-row sm:items-center sm:justify-between opacity-60">
+        <div className="flex items-center gap-6">
+          <p className="t-micro">PrepPulse</p>
+          <Link href="/pricing" className="t-meta text-[13px] text-ink-3 transition-colors hover:text-ink">
             Pricing
           </Link>
-          <p className="t-meta text-ink-4">
-            Audio never leaves your browser. Only the transcript is stored.
-          </p>
         </div>
+        <p className="t-meta text-[12px] text-ink-4">
+          Audio never leaves your browser. Only the transcript is stored.
+        </p>
       </footer>
     </div>
   );
