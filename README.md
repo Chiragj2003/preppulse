@@ -8,6 +8,8 @@ Interview prep is in here too — but it's deliberately the *second* thing you s
 not the pitch. Most people who want to get better at speaking aren't preparing
 for an interview this week.
 
+**Live:** [preppulse-one.vercel.app](https://preppulse-one.vercel.app)
+
 ---
 
 ## Status
@@ -67,6 +69,25 @@ All secrets live in a single git-ignored `.env`. Only `DATABASE_URL`,
 | `RESEND_API_KEY` | no | Without it, magic links print to the dev terminal |
 | `RATE_LIMIT_PER_MINUTE` / `_PER_DAY` | no | Defaults 6 / 60 |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | no | Switches the leaderboard to Redis; falls back to Postgres without it |
+| `ADMIN_EMAILS` | no | Comma-separated allowlist for `/admin`. Empty = nobody. |
+
+### Deploying
+
+Set every variable above in Vercel → Settings → Environment Variables, with two
+that **must differ from local**:
+
+```
+BETTER_AUTH_URL=https://preppulse-one.vercel.app
+NEXT_PUBLIC_APP_URL=https://preppulse-one.vercel.app
+```
+
+Leaving these at `localhost:3000` is the single most common way a working local
+build fails in production: OAuth callbacks and magic links point at the
+developer's machine, and Better Auth's origin check rejects the real domain.
+
+Google Cloud Console needs the production pair too — origin
+`https://preppulse-one.vercel.app` and redirect
+`https://preppulse-one.vercel.app/api/auth/callback/google`.
 
 ### Scripts
 
