@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/lib/scoring.test.ts && tsx src/lib/interview-scoring.test.ts && tsx src/lib/gd-metrics.test.ts && tsx src/lib/gamification.test.ts && tsx src/lib/billing.test.ts",
+    "test": "tsx src/lib/scoring.test.ts && tsx src/lib/interview-scoring.test.ts && tsx src/lib/gd-metrics.test.ts && tsx src/lib/gamification.test.ts && tsx src/lib/billing.test.ts && tsx src/lib/scenarios.test.ts && tsx src/lib/cost.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
