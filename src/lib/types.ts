@@ -89,11 +89,103 @@ export const LANGUAGE_LABELS: Record<Language, string> = {
   hi: "हिन्दी",
 };
 
-/** Structured resume data extracted by Gemini in Phase 3. Stored as JSON only. */
+/** Structured resume data extracted by Gemini. Stored as JSON only. */
 export interface ResumeExtract {
   skills: string[];
   experience: { company: string; role: string; period?: string; highlights?: string[] }[];
   projects: { name: string; description?: string; tech?: string[] }[];
   education?: { institution: string; degree?: string; year?: string }[];
   summary?: string;
+  /** Gemini's read on what this person would actually be interviewed for. */
+  recommendedRole?: string;
+  recommendedFocus?: string;
+}
+
+/* ── Interview (Phase 3) ────────────────────────────────────────────────── */
+
+export const INTERVIEWER_PERSONAS = [
+  "friendly",
+  "professional",
+  "challenging",
+  "stress",
+] as const;
+
+export type InterviewerPersona = (typeof INTERVIEWER_PERSONAS)[number];
+
+export const PERSONA_LABELS: Record<InterviewerPersona, string> = {
+  friendly: "Friendly",
+  professional: "Professional",
+  challenging: "Challenging",
+  stress: "Stress",
+};
+
+export const PERSONA_BLURBS: Record<InterviewerPersona, string> = {
+  friendly: "Warm and encouraging. Gives you room to think.",
+  professional: "Neutral and efficient. What a real first round feels like.",
+  challenging: "Probes your answers and asks for specifics.",
+  stress: "Interrupts, pushes back, and tests how you hold up.",
+};
+
+/** The four things an interview answer is judged on. All 0-100. */
+export const ANSWER_DIMENSIONS = ["content", "clarity", "relevance", "structure"] as const;
+export type AnswerDimension = (typeof ANSWER_DIMENSIONS)[number];
+export type AnswerScores = Record<AnswerDimension, number>;
+
+export const ANSWER_LABELS: Record<AnswerDimension, string> = {
+  content: "Substance",
+  clarity: "Clarity",
+  relevance: "Relevance",
+  structure: "Structure",
+};
+
+export const ANSWER_HINTS: Record<AnswerDimension, string> = {
+  content: "Real specifics and evidence, not generalities",
+  clarity: "Understandable the first time, without re-reading",
+  relevance: "Actually answers the question that was asked",
+  structure: "A shape a listener can follow to the end",
+};
+
+/**
+ * Relevance is weighted highest because the most common interview failure is
+ * a well-delivered answer to a question nobody asked.
+ */
+export const ANSWER_WEIGHTS: AnswerScores = {
+  content: 0.3,
+  clarity: 0.22,
+  relevance: 0.3,
+  structure: 0.18,
+};
+
+export type QuestionKind = "behavioural" | "technical" | "situational" | "motivational";
+
+/* ── Group discussion & debate (Phase 4) ────────────────────────────────── */
+
+export interface DiscussionPersona {
+  id: string;
+  name: string;
+  trait: string;
+  /** Shapes the system prompt, not the scoring. */
+  instruction: string;
+}
+
+export interface GdMetrics {
+  totalTurns: number;
+  userTurns: number;
+  userWords: number;
+  totalWords: number;
+  /** Share of all words spoken that were the user's, 0-100. */
+  speakingSharePct: number;
+  argumentsIntroduced: number;
+  directRebuttals: number;
+  interruptions: number;
+}
+
+/** Per-session settings that only some modes need. */
+export interface SessionConfig {
+  persona?: InterviewerPersona;
+  questionCount?: number;
+  role?: string;
+  /** Debate: the side the user argues. The AI automatically takes the other. */
+  userStance?: "for" | "against";
+  personaIds?: string[];
 }

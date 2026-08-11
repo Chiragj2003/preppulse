@@ -1,0 +1,269 @@
+import { z } from "zod";
+
+import { AppError } from "@/lib/errors";
+import { weightedAnswerScore } from "@/lib/interview-scoring";
+import { clamp } from "@/lib/scoring";
+import type {
+  AnswerScores,
+  InterviewerPersona,
+  QuestionKind,
+  ResumeExtract,
+} from "@/lib/types";
+import { callGemini, type GeminiPart } from "./gemini";
+
+/* ── Resume extraction ──────────────────────────────────────────────────── */
+
+const ResumeSchema = z.object({
+  skills: z.array(z.string()).max(40),
+  experience: z
+    .array(
+      z.object({
+        company: z.string(),
+        role: z.string(),
+        period: z.string().optional(),
+        highlights: z.array(z.string()).optional(),
+      }),
+    )
+    .max(12),
+  projects: z
+    .array(
+      z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        tech: z.array(z.string()).optional(),
+      }),
+    )
+    .max(12),
+  education: z
+    .array(
+      z.object({
+        institution: z.string(),
+        degree: z.string().optional(),
+        year: z.string().optional(),
+      }),
+    )
+    .optional(),
+  summary: z.string().optional(),
+  recommendedRole: z.string(),
+  recommendedFocus: z.string(),
+});
+
+/**
+ * Reads the PDF natively — Gemini accepts the bytes directly, so there is no
+ * OCR step and no text-extraction library to keep alive.
+ *
+ * The file itself is never persisted. Only this JSON is stored, which is both
+ * the privacy position and the reason the profile row stays small.
+ */
+export async function extractResume(input: {
+  userId: string;
+  pdfBase64: string;
+}): Promise<ResumeExtract> {
+  const parts: GeminiPart[] = [
+    { inline_data: { mime_type: "application/pdf", data: input.pdfBase64 } },
+    {
+      text: `Extract this resume into JSON.
+
+Rules:
+- Copy what the document actually says. Do not invent employers, dates or metrics.
+- If a field is genuinely absent, omit it rather than guessing.
+- "recommendedRole" is the job title this person would realistically be interviewed for right now, based on what they have actually done.
+- "recommendedFocus" is one sentence on what their interview would concentrate on.
+
+Return ONLY JSON:
+{"skills":string[],"experience":[{"company":string,"role":string,"period":string,"highlights":string[]}],"projects":[{"name":string,"description":string,"tech":string[]}],"education":[{"institution":string,"degree":string,"year":string}],"summary":string,"recommendedRole":string,"recommendedFocus":string}`,
+    },
+  ];
+
+  return callGemini({
+    parts,
+    schema: ResumeSchema,
+    operation: "extract_resume",
+    userId: input.userId,
+    temperature: 0.1,
+    maxOutputTokens: 4096,
+  });
+}
+
+/* ── Question generation ────────────────────────────────────────────────── */
+
+const QuestionsSchema = z.object({
+  questions: z
+    .array(
+      z.object({
+        question: z.string(),
+        kind: z.enum(["behavioural", "technical", "situational", "motivational"]),
+        rationale: z.string(),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
+const PERSONA_VOICE: Record<InterviewerPersona, string> = {
+  friendly:
+    "You are warm and encouraging. Questions are open and give the candidate room to think.",
+  professional:
+    "You are neutral, efficient and businesslike. Questions are the ones a competent first-round interviewer would actually ask.",
+  challenging:
+    "You probe for specifics. Questions push for evidence, numbers and the candidate's exact contribution.",
+  stress:
+    "You are deliberately demanding. Questions are pointed, assume the candidate is overstating, and test composure. Stay professional — pressure, never rudeness.",
+};
+
+/**
+ * The full set is produced in one call, before the interview starts.
+ *
+ * Generating each question after seeing the previous answer would be the
+ * obvious design and is the wrong one: it makes a session impossible to
+ * resume, and it lets the interview drift toward whatever the candidate is
+ * comfortable with instead of covering the ground the role needs.
+ */
+export async function generateQuestions(input: {
+  userId: string;
+  sessionId: string;
+  persona: InterviewerPersona;
+  count: number;
+  role: string;
+  background: string;
+}) {
+  const result = await callGemini({
+    parts: [
+      {
+        text: `You are conducting a mock job interview for: ${input.role}
+
+${PERSONA_VOICE[input.persona]}
+
+The candidate's background:
+"""
+${input.background.slice(0, 6000)}
+"""
+
+Write exactly ${input.count} interview questions for this specific person.
+
+Rules:
+- Ground them in the background above. Reference their actual projects, tools and claims.
+- Open with something answerable to settle nerves, then go deeper.
+- Mix kinds: behavioural, technical, situational, motivational. Weight toward what this role really tests.
+- One question each. No multi-part questions with "and also".
+- Never ask "tell me about yourself" — it is the one question everyone has already rehearsed.
+- "rationale" is one short line on why this question is worth asking THIS candidate.
+
+Return ONLY JSON:
+{"questions":[{"question":string,"kind":"behavioural"|"technical"|"situational"|"motivational","rationale":string}]}`,
+      },
+    ],
+    schema: QuestionsSchema,
+    operation: "generate_questions",
+    userId: input.userId,
+    sessionId: input.sessionId,
+    temperature: 0.85,
+    maxOutputTokens: 4096,
+  });
+
+  return result.questions.slice(0, input.count).map((q, index) => ({
+    position: index,
+    question: q.question,
+    kind: q.kind as QuestionKind,
+    rationale: q.rationale,
+  }));
+}
+
+/* ── Per-answer analysis ────────────────────────────────────────────────── */
+
+const AnswerSchema = z.object({
+  content: z.number(),
+  clarity: z.number(),
+  relevance: z.number(),
+  structure: z.number(),
+  feedback: z.string(),
+  strengths: z.array(z.string()).min(1).max(3),
+  improvements: z.array(z.string()).min(1).max(3),
+  idealAnswer: z.string(),
+});
+
+/**
+ * Analyses one answer the moment it is given, rather than banking everything
+ * until the end. This is the piece the plan flagged as trickiest, and the
+ * reason is timing: a candidate who rambled on question 3 should find out
+ * before they answer question 4, otherwise the session teaches them nothing
+ * until it is over.
+ */
+export async function analyseAnswer(input: {
+  userId: string;
+  sessionId: string;
+  question: string;
+  kind: QuestionKind;
+  transcript: string;
+  persona: InterviewerPersona;
+  role: string;
+}) {
+  const words = input.transcript.trim().split(/\s+/).filter(Boolean).length;
+  if (words < 10) {
+    throw new AppError(
+      "invalid_input",
+      "That answer is too short to judge fairly. Give it another go with a bit more.",
+    );
+  }
+
+  const star =
+    input.kind === "behavioural"
+      ? "Because this is a behavioural question, the ideal answer MUST follow STAR: Situation, Task, Action, Result — with a concrete result."
+      : "Give a strong model answer appropriate to the question type.";
+
+  const verdict = await callGemini({
+    parts: [
+      {
+        text: `You are assessing one answer in a mock interview for: ${input.role}
+
+QUESTION (${input.kind}): ${input.question}
+
+CANDIDATE'S ANSWER (speech-to-text, so expect missing punctuation):
+"""
+${input.transcript.slice(0, 6000)}
+"""
+
+Score 0-100 on four dimensions. Be fair but honest: 50 is an average attempt, 75 is genuinely good, above 90 is rare.
+- content: real specifics and evidence, versus generalities
+- clarity: understandable first time
+- relevance: does it actually answer THIS question
+- structure: does it have a shape a listener can follow
+
+Then write:
+- feedback: two sentences, second person, on how that answer would have landed in a real room.
+- strengths: 1-3 specific things they did well. Quote their words where you can.
+- improvements: 1-3 concrete fixes. What to do differently, not just what was wrong.
+- idealAnswer: a model answer to this question, written in first person as if the candidate gave it. ${star} Use their real background where the transcript gives you something to work with, and keep it to a spoken length — around 150 words.
+
+Return ONLY JSON:
+{"content":number,"clarity":number,"relevance":number,"structure":number,"feedback":string,"strengths":string[],"improvements":string[],"idealAnswer":string}`,
+      },
+    ],
+    schema: AnswerSchema,
+    operation: "analyse_answer",
+    userId: input.userId,
+    sessionId: input.sessionId,
+    temperature: 0.3,
+    maxOutputTokens: 2048,
+  });
+
+  const scores: AnswerScores = {
+    content: clamp(verdict.content),
+    clarity: clamp(verdict.clarity),
+    relevance: clamp(verdict.relevance),
+    structure: clamp(verdict.structure),
+  };
+
+  return {
+    scores,
+    overallScore: weightedAnswerScore(scores),
+    feedback: verdict.feedback,
+    strengths: verdict.strengths,
+    improvements: verdict.improvements,
+    idealAnswer: verdict.idealAnswer,
+  };
+}
+
+// Pure maths lives in lib/interview-scoring.ts so it can be tested without
+// pulling in the Gemini client and its env requirements.
+export { aggregateScores, runningAverage, weightedAnswerScore } from "@/lib/interview-scoring";

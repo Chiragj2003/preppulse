@@ -21,7 +21,14 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import type { EvaluationPayload, FillerHit, ResumeExtract, Scores } from "@/lib/types";
+import type {
+  AnswerScores,
+  EvaluationPayload,
+  FillerHit,
+  ResumeExtract,
+  Scores,
+  SessionConfig,
+} from "@/lib/types";
 import { users } from "./auth-schema";
 
 export const practiceModeEnum = pgEnum("practice_mode", [
@@ -48,6 +55,21 @@ export const aiProviderEnum = pgEnum("ai_provider", ["groq", "gemini"]);
 
 /** How the answer reached us. Typed answers have no measurable speaking pace. */
 export const inputModeEnum = pgEnum("input_mode", ["speech", "typed"]);
+
+/** Interviewer temperament. Changes the system prompt, not the scoring. */
+export const personaEnum = pgEnum("interviewer_persona", [
+  "friendly",
+  "professional",
+  "challenging",
+  "stress",
+]);
+
+export const questionKindEnum = pgEnum("question_kind", [
+  "behavioural",
+  "technical",
+  "situational",
+  "motivational",
+]);
 
 /* ── topics ────────────────────────────────────────────────────────────────
  * Deliberately wide-ranging subject matter — philosophy, science, culture,
@@ -83,6 +105,12 @@ export const practiceSessions = pgTable(
     mode: practiceModeEnum("mode").notNull(),
     status: sessionStatusEnum("status").notNull().default("created"),
     language: languageEnum("language").notNull().default("en"),
+    /**
+     * Mode-specific settings in one column rather than a nullable column per
+     * mode: persona and question count for interviews, stance and personas for
+     * debate. Modes that need nothing store nothing.
+     */
+    config: jsonb("config").$type<SessionConfig>(),
     /** Denormalised so a session still reads correctly if a topic is retired. */
     promptSnapshot: text("prompt_snapshot"),
     durationSeconds: integer("duration_seconds"),
@@ -188,6 +216,89 @@ export const streaks = pgTable(
   (table) => [uniqueIndex("streaks_user_unique").on(table.userId)],
 );
 
+/* ── interview_questions ───────────────────────────────────────────────────
+ * The whole set is generated once, upfront, and stored. Generating question
+ * N+1 after seeing answer N would make the interview un-resumable and would
+ * let the model drift toward whatever the candidate happens to be good at.
+ */
+export const interviewQuestions = pgTable(
+  "interview_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => practiceSessions.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    question: text("question").notNull(),
+    kind: questionKindEnum("kind").notNull().default("behavioural"),
+    /** Why this question was chosen for this candidate — shown in the report. */
+    rationale: text("rationale"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("interview_questions_slot_unique").on(table.sessionId, table.position)],
+);
+
+/* ── interview_answers ─────────────────────────────────────────────────────
+ * One row per attempt, not per question: a retry keeps the original so the
+ * report can show the score delta between the two.
+ */
+export const interviewAnswers = pgTable(
+  "interview_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    questionId: uuid("question_id")
+      .notNull()
+      .references(() => interviewQuestions.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => practiceSessions.id, { onDelete: "cascade" }),
+    attempt: integer("attempt").notNull().default(1),
+    transcript: text("transcript").notNull(),
+    inputMode: inputModeEnum("input_mode").notNull().default("speech"),
+    /** content / clarity / relevance / structure, 0-100 each. */
+    scores: jsonb("scores").$type<AnswerScores>().notNull(),
+    overallScore: integer("overall_score").notNull(),
+    feedback: text("feedback").notNull(),
+    strengths: jsonb("strengths").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    improvements: jsonb("improvements").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /** STAR-shaped model answer for behavioural questions. */
+    idealAnswer: text("ideal_answer"),
+    durationSeconds: integer("duration_seconds"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("interview_answers_session_idx").on(table.sessionId),
+    uniqueIndex("interview_answers_attempt_unique").on(table.questionId, table.attempt),
+  ],
+);
+
+/* ── discussion_turns ──────────────────────────────────────────────────────
+ * Every utterance in a group discussion or debate, from the user and from each
+ * AI persona, in order. GD metrics are computed from these rows rather than
+ * asked of a model, for the same reason pace and filler are counted in code.
+ */
+export const discussionTurns = pgTable(
+  "discussion_turns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => practiceSessions.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    /** null speaker = the user; otherwise the persona's id. */
+    speaker: text("speaker"),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    /** Debate structure: opening / argument / rebuttal / closing. */
+    stage: text("stage"),
+    /** Whether this turn directly answered the previous speaker. */
+    isRebuttal: boolean("is_rebuttal").notNull().default(false),
+    wordCount: integer("word_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("discussion_turns_slot_unique").on(table.sessionId, table.position)],
+);
+
 /* ── relations ─────────────────────────────────────────────────────────── */
 export const practiceSessionsRelations = relations(practiceSessions, ({ one }) => ({
   topic: one(topics, { fields: [practiceSessions.topicId], references: [topics.id] }),
@@ -213,6 +324,9 @@ export const streaksRelations = relations(streaks, ({ one }) => ({
   user: one(users, { fields: [streaks.userId], references: [users.id] }),
 }));
 
+export type InterviewQuestion = typeof interviewQuestions.$inferSelect;
+export type InterviewAnswer = typeof interviewAnswers.$inferSelect;
+export type DiscussionTurn = typeof discussionTurns.$inferSelect;
 export type Topic = typeof topics.$inferSelect;
 export type PracticeSession = typeof practiceSessions.$inferSelect;
 export type Evaluation = typeof evaluations.$inferSelect;
