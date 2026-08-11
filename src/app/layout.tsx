@@ -1,21 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { Outfit, Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 
 import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
 
 /**
- * Display: Outfit. A premium, geometric, circular display font that feels
- * extremely modern and Apple-like.
+ * Display: Bricolage Grotesque. A variable editorial grotesk with a real
+ * optical-size axis, so large type is drawn tighter and small type looser
+ * rather than one outline being scaled. This is the voice of the product.
  *
  * Body/UI: Geist. Neutral and highly legible, deliberately quieter than the
  * display face so the two never compete.
  *
  * Mono: Geist Mono. Timers, scores, counts, metadata.
  */
-const display = Outfit({
-  variable: "--font-outfit",
+const display = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
+  axes: ["opsz"],
   display: "swap",
 });
 
