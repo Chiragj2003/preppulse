@@ -2,11 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { DailyRoll } from "@/components/daily-roll";
+import { EmptyState } from "@/components/ui/states";
 import { getDailyTopic, getDecoyPrompts, getRandomTopic, getStreak } from "@/lib/practice";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Practice" };
 
+/**
+ * Nothing on this page competes with the slab. The roll is the event; the
+ * streak line above it and the exit below are set as small metadata so the
+ * eye lands where the interaction is.
+ */
 export default async function PracticePage({
   searchParams,
 }: {
@@ -20,45 +26,45 @@ export default async function PracticePage({
 
   if (!topic) {
     return (
-      <EmptyState
-        title="No topics yet"
-        body="The topic pool is empty. Run npm run db:seed to load the starter set of 50."
-      />
+      <div className="mx-auto max-w-lg px-5 pt-32">
+        <EmptyState
+          eyebrow="No topics"
+          title="The topic pool is empty."
+          body="Run npm run db:seed to load the starter set of fifty."
+        />
+      </div>
     );
   }
 
   const [decoys, streak] = await Promise.all([getDecoyPrompts(topic.id), getStreak(user.id)]);
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-14 sm:py-20">
-      {streak && streak.currentStreak > 0 && (
-        <p className="mb-8 text-center text-[13px] text-muted">
-          {streak.currentStreak}-day streak. Keep it going.
-        </p>
-      )}
+    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-5 py-28 sm:px-6">
+      <p className="t-micro rise mb-10 text-center">
+        {quick ? "Quick challenge" : "Daily roll"}
+        {streak && streak.currentStreak > 0 && (
+          <>
+            <span className="mx-3 text-ink-4">/</span>
+            <span className="text-accent">{streak.currentStreak} day streak</span>
+          </>
+        )}
+      </p>
 
-      <DailyRoll
-        topicId={topic.id}
-        topic={topic.promptText}
-        decoys={decoys}
-        category={topic.category}
-        quick={quick}
-      />
+      <div className="rise [animation-delay:80ms]">
+        <DailyRoll
+          topicId={topic.id}
+          topic={topic.promptText}
+          decoys={decoys}
+          category={topic.category}
+          quick={quick}
+        />
+      </div>
 
-      <p className="mt-14 text-center text-[13px] text-muted">
-        <Link href="/dashboard" className="hover:text-ink-soft hover:underline">
+      <p className="mt-16 text-center">
+        <Link href="/dashboard" className="t-micro transition-colors hover:text-ink-2">
           Back to dashboard
         </Link>
       </p>
-    </div>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="mx-auto max-w-md px-5 py-24 text-center">
-      <h1 className="text-[22px] font-semibold">{title}</h1>
-      <p className="mt-2 text-[15px] leading-relaxed text-ink-soft">{body}</p>
     </div>
   );
 }

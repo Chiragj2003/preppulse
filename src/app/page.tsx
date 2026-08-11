@@ -1,177 +1,161 @@
-import { ArrowRight, Dices, MessageSquareText, Timer, Users } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 
+import { Surface } from "@/components/ui/surface";
+import { getDailyTopic } from "@/lib/practice";
 import { getSession } from "@/lib/session";
 
 /**
- * Landing page. Deliberate ordering, per the product decisions:
- * fun/casual practice is the primary call to action, and interview prep is a
- * separate, clearly-labelled section further down - not the opening pitch.
+ * Editorial introduction, composed rather than stacked.
+ *
+ * The hero is a single sentence set at display scale with the day's real topic
+ * embedded in it — the product demonstrating itself instead of describing
+ * itself. Daily practice is the whole first screen; interview preparation is a
+ * separate, quieter movement further down.
  */
 export default async function HomePage() {
-  const session = await getSession();
-  const startHref = session?.user ? "/practice" : "/sign-in?next=/practice";
+  const [session, topic] = await Promise.all([getSession(), getDailyTopic().catch(() => null)]);
+  const start = session?.user ? "/practice" : "/sign-in?next=/practice";
 
   return (
-    <div className="mx-auto max-w-5xl px-5 pb-24">
-      {/* Hero */}
-      <section className="rise pt-16 pb-12 text-center sm:pt-24">
-        <p className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-[12.5px] font-medium text-ink-soft">
-          <span className="size-1.5 rounded-full bg-positive" />
-          A new topic every day
+    <div className="mx-auto max-w-6xl px-5 sm:px-6">
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="flex min-h-[92dvh] flex-col justify-center pt-28 pb-16">
+        <p className="t-micro rise mb-10">
+          Daily speaking practice
+          <span className="mx-3 text-ink-4">/</span>
+          <span className="text-ink-2">
+            {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long" })}
+          </span>
         </p>
-        <h1 className="t-display mx-auto max-w-2xl">
-          Speak better,
+
+        <h1 className="t-hero rise max-w-[15ch] [animation-delay:60ms]">
+          Two minutes
           <br />
-          two minutes at a time.
+          <span className="text-ink-3">of talking</span>
+          <br />
+          changes how
+          <br />
+          you sound.
         </h1>
-        <p className="t-lead mx-auto mt-5 max-w-xl text-ink-soft">
-          Roll a topic you didn&apos;t see coming. Talk it through. Get told exactly where you
-          rambled, where you filled, and where you nailed it.
-        </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href={startHref}
-            className="pressable inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-[15px] font-medium text-accent-ink shadow-[var(--shadow-soft)] hover:brightness-110"
-          >
-            <Dices className="size-4.5" />
-            Roll today&apos;s topic
-          </Link>
-          <Link
-            href="#interview"
-            className="pressable rounded-full px-5 py-3 text-[15px] text-ink-soft hover:bg-surface-2 hover:text-ink"
-          >
-            Got an interview coming up?
-          </Link>
-        </div>
-      </section>
 
-      {/* Primary: the fun modes */}
-      <section className="rise [animation-delay:90ms]">
-        <h2 className="t-label mb-4 px-1 text-muted">
-          Pick your practice
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <ModeCard
-            href={startHref}
-            icon={<Dices className="size-5" />}
-            title="Fun Topic Roll"
-            blurb="A random topic from 50-plus. Two minutes to make it make sense."
-            meta="2 min"
-          />
-          <ModeCard
-            href={session?.user ? "/practice?mode=quick" : "/sign-in?next=/practice"}
-            icon={<Timer className="size-5" />}
-            title="Quick Challenge"
-            blurb="Same idea, half the clock. Sixty seconds, no prep time."
-            meta="1 min"
-          />
-          <ModeCard
-            icon={<Users className="size-5" />}
-            title="GD Practice"
-            blurb="Hold your ground in a group discussion against AI participants."
-            meta="Phase 4"
-            disabled
-          />
-        </div>
-      </section>
+        <div className="mt-14 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end">
+          <p className="t-lead rise max-w-md [animation-delay:140ms]">
+            A topic you didn&apos;t see coming. A clock. Then an honest read on where you landed it,
+            where you rambled, and where the filler crept in.
+          </p>
 
-      {/* Secondary: interview prep, visually separated on purpose */}
-      <section id="interview" className="rise mt-20 scroll-mt-20 [animation-delay:150ms]">
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-8 sm:p-10">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="max-w-lg">
-              <p className="mb-2 text-[12.5px] font-semibold tracking-wide text-accent uppercase">
-                Serious mode
-              </p>
-              <h2 className="text-[26px] leading-tight font-semibold">Preparing for an interview?</h2>
-              <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
-                Tell us what you do, or drop in your resume. PrepPulse reads it, works out what
-                you&apos;d actually be asked, and runs a mock round question by question.
-              </p>
+          <div className="rise flex items-center gap-4 [animation-delay:200ms]">
+            <Link
+              href={start}
+              className="pressable group inline-flex h-[58px] items-center gap-3 rounded-full bg-accent pr-3 pl-7 text-[16px] font-medium text-void shadow-[var(--shadow-accent)] hover:brightness-110"
+            >
+              Start today&apos;s roll
+              <span className="grid size-10 place-items-center rounded-full bg-void/15 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5">
+                <ArrowUpRight className="size-4.5" />
+              </span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Today's actual topic, sitting in the hero as evidence. */}
+        {topic && (
+          <Surface
+            material="dense"
+            radius="lg"
+            refract
+            className="unblur mt-16 overflow-hidden [animation-delay:280ms]"
+          >
+            <div className="relative flex flex-col gap-6 p-7 sm:flex-row sm:items-center sm:justify-between sm:p-9">
+              <div className="max-w-2xl">
+                <p className="t-micro mb-4">Today, everyone gets</p>
+                <p className="t-title text-ink">{topic.promptText}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-8 sm:flex-col sm:items-end sm:gap-2">
+                <div className="text-right">
+                  <p className="t-numeric text-[28px] leading-none">2:00</p>
+                  <p className="t-micro mt-2">on the clock</p>
+                </div>
+              </div>
             </div>
+          </Surface>
+        )}
+      </section>
+
+      <div className="rule" />
+
+      {/* ── How it works: numbered editorial rows, not a three-card grid ─── */}
+      <section className="py-24 sm:py-32">
+        <p className="t-micro mb-14">How a session goes</p>
+
+        <ol className="space-y-px">
+          {[
+            {
+              n: "01",
+              t: "Roll",
+              d: "The day's topic reveals itself. No browsing, no picking the easy one, no stalling.",
+            },
+            {
+              n: "02",
+              t: "Speak",
+              d: "Thirty seconds to think, two minutes to talk. Your microphone transcribes as you go.",
+            },
+            {
+              n: "03",
+              t: "Read the tape",
+              d: "Six measures, your filler words in context, and your own answer with the slack taken out.",
+            },
+          ].map((step, i) => (
+            <li
+              key={step.n}
+              className="rise group grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 border-t border-line py-8 sm:grid-cols-[5rem_14rem_1fr] sm:gap-x-10"
+              style={{ animationDelay: `${i * 80}ms` }}
+            >
+              <span className="t-numeric text-[13px] text-ink-4">{step.n}</span>
+              <h3 className="t-title text-ink">{step.t}</h3>
+              <p className="t-body col-span-2 max-w-md text-ink-3 sm:col-span-1">{step.d}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <div className="rule" />
+
+      {/* ── Interview prep: the secondary movement, visibly separate ─────── */}
+      <section id="interview" className="scroll-mt-28 py-24 sm:py-32">
+        <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-20">
+          <div>
+            <p className="t-micro mb-6">Also, when you need it</p>
+            <h2 className="t-display max-w-[12ch]">
+              Got an interview <span className="text-ink-3">this week?</span>
+            </h2>
+          </div>
+
+          <div className="flex flex-col items-start justify-end gap-7">
+            <p className="t-lead max-w-md">
+              Tell PrepPulse what you actually do, or hand it your resume. It works out what
+              you&apos;d really be asked and runs the round question by question — analysing each
+              answer as you give it, not at the end.
+            </p>
             <Link
               href={session?.user ? "/interview-prep" : "/sign-in?next=/interview-prep"}
-              className="pressable inline-flex shrink-0 items-center gap-2 rounded-full bg-ink px-5 py-3 text-[15px] font-medium text-bg hover:opacity-90"
+              className="group inline-flex items-center gap-2.5 text-[15px] text-ink transition-colors hover:text-accent"
             >
-              Set up my profile
-              <ArrowRight className="size-4" />
+              <span className="border-b border-ink-4 pb-1 transition-colors group-hover:border-accent">
+                Set up interview prep
+              </span>
+              <ArrowUpRight className="size-4 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="rise mt-20 [animation-delay:210ms]">
-        <h2 className="mb-6 px-1 text-[13px] font-semibold tracking-wide text-muted uppercase">
-          How a session goes
-        </h2>
-        <ol className="grid gap-3 sm:grid-cols-3">
-          {[
-            { n: "01", t: "Roll", d: "Today's topic reveals itself. No picking, no stalling." },
-            { n: "02", t: "Speak", d: "Prep timer, then the clock. Your mic transcribes live." },
-            { n: "03", t: "Read the tape", d: "Six scores, your filler words, and a tighter rewrite." },
-          ].map((step) => (
-            <li key={step.n} className="card p-5">
-              <span className="font-mono text-[12px] text-muted">{step.n}</span>
-              <h3 className="mt-2 text-[16px] font-semibold">{step.t}</h3>
-              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{step.d}</p>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-6 flex items-center justify-center gap-2 text-[13px] text-muted">
-          <MessageSquareText className="size-3.5" />
-          Everything runs in your browser mic. Nothing is recorded to disk.
+      <footer className="flex flex-col gap-3 border-t border-line py-10 sm:flex-row sm:items-center sm:justify-between">
+        <p className="t-micro">PrepPulse</p>
+        <p className="t-meta text-ink-4">
+          Audio never leaves your browser. Only the transcript is stored.
         </p>
-      </section>
+      </footer>
     </div>
-  );
-}
-
-function ModeCard({
-  href,
-  icon,
-  title,
-  blurb,
-  meta,
-  disabled,
-}: {
-  href?: string;
-  icon: React.ReactNode;
-  title: string;
-  blurb: string;
-  meta: string;
-  disabled?: boolean;
-}) {
-  const body = (
-    <>
-      <div className="flex items-start justify-between">
-        <span className="grid size-10 place-items-center rounded-[var(--radius-xs)] bg-accent-soft text-accent">
-          {icon}
-        </span>
-        <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-muted">
-          {meta}
-        </span>
-      </div>
-      <h3 className="mt-4 text-[17px] font-semibold">{title}</h3>
-      <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{blurb}</p>
-    </>
-  );
-
-  if (disabled || !href) {
-    return (
-      <div className="card p-5 opacity-55" aria-disabled>
-        {body}
-      </div>
-    );
-  }
-
-  return (
-    <Link
-      href={href}
-      className="pressable card block p-5 hover:border-accent/40 hover:shadow-[var(--shadow-lift)]"
-    >
-      {body}
-    </Link>
   );
 }
