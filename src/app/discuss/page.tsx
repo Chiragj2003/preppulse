@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import { checkCanStart } from "@/lib/gate";
 import { GD_PERSONAS } from "@/lib/gd-metrics";
 import { getRandomTopic } from "@/lib/practice";
 import { requireUser } from "@/lib/session";
@@ -14,10 +16,16 @@ export default async function DiscussSetupPage({
 }: {
   searchParams: Promise<{ mode?: string }>;
 }) {
-  await requireUser("/discuss");
+  const user = await requireUser("/discuss");
   const { mode } = await searchParams;
   const debate = mode === "debate";
-  const topic = await getRandomTopic();
+
+  // Checked here so the page never offers a button the user can't use. The
+  // action re-checks server-side; this is about honesty, not security.
+  const [topic, locked] = await Promise.all([
+    getRandomTopic(),
+    checkCanStart(user.id, debate ? "debate" : "group_discussion"),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl px-5 pt-28 pb-24 sm:px-6">
@@ -94,9 +102,20 @@ export default async function DiscussSetupPage({
         )}
 
         <div className="mt-10 border-t border-line pt-8">
-          <Button type="submit" variant="primary" size="lg" disabled={!topic}>
-            {debate ? "Start the debate" : "Join the discussion"}
-          </Button>
+          {locked ? (
+            <div className="flex flex-col items-start gap-5">
+              <p className="t-body max-w-lg text-ink-2">{locked.message}</p>
+              <Link href="/pricing">
+                <Button variant="primary" size="lg">
+                  See the plans
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <Button type="submit" variant="primary" size="lg" disabled={!topic}>
+              {debate ? "Start the debate" : "Join the discussion"}
+            </Button>
+          )}
         </div>
       </form>
     </div>

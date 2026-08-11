@@ -9,6 +9,7 @@ import { db } from "@/db";
 import { discussionTurns, practiceSessions } from "@/db/schema";
 import { respondToDebate, respondToDiscussion } from "@/lib/ai/discussion";
 import { AppError, toAppError, type AppErrorCode } from "@/lib/errors";
+import { gateOrRedirect } from "@/lib/gate";
 import { computeGdMetrics, countWordsIn, GD_PERSONAS, nextStage, type DebateStage } from "@/lib/gd-metrics";
 import { getRandomTopic, getTopicById, recordPractice } from "@/lib/practice";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -36,10 +37,13 @@ export async function startDiscussion(formData: FormData) {
   const user = await requireUserApi();
 
   const input = StartInput.parse({
+    // parsed first so the gate can name the mode the user actually asked for
     mode: formData.get("mode"),
     topicId: formData.get("topicId") || undefined,
     stance: formData.get("stance") || undefined,
   });
+
+  await gateOrRedirect(user.id, input.mode);
 
   const topic = input.topicId ? await getTopicById(input.topicId) : await getRandomTopic();
   if (!topic) throw new AppError("not_found", "No topics are seeded yet.");

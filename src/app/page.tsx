@@ -2,6 +2,7 @@ import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 
 import { Surface } from "@/components/ui/surface";
+import { getLeaderboard } from "@/lib/leaderboard";
 import { getDailyTopic } from "@/lib/practice";
 import { getSession } from "@/lib/session";
 
@@ -14,7 +15,11 @@ import { getSession } from "@/lib/session";
  * separate, quieter movement further down.
  */
 export default async function HomePage() {
-  const [session, topic] = await Promise.all([getSession(), getDailyTopic().catch(() => null)]);
+  const [session, topic, board] = await Promise.all([
+    getSession(),
+    getDailyTopic().catch(() => null),
+    getLeaderboard(5).catch(() => []),
+  ]);
   const start = session?.user ? "/practice" : "/sign-in?next=/practice";
 
   return (
@@ -187,11 +192,46 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Leaderboard: on the homepage on purpose, to give returning users a
+          reason to come back and signed-out visitors a reason to start. */}
+      {board.length > 0 && (
+        <>
+          <div className="rule" />
+          <section className="py-24 sm:py-32">
+            <div className="mb-10 flex flex-wrap items-baseline justify-between gap-4">
+              <p className="t-micro">This week&apos;s best scores</p>
+              <p className="t-meta text-ink-4">Top score in the last seven days</p>
+            </div>
+
+            <ol className="divide-y divide-line/70 border-t border-line">
+              {board.map((row) => (
+                <li key={row.userId} className="flex items-baseline gap-6 py-5">
+                  <span className="t-numeric w-8 shrink-0 text-[15px] text-ink-4">{row.rank}</span>
+                  <span className="t-body flex-1 text-ink-2">{row.name}</span>
+                  <span className="t-numeric text-[20px]">{row.score}</span>
+                </li>
+              ))}
+            </ol>
+
+            <p className="t-meta mt-8">
+              <Link href={start} className="text-accent hover:underline">
+                Put your name on it
+              </Link>
+            </p>
+          </section>
+        </>
+      )}
+
       <footer className="flex flex-col gap-3 border-t border-line py-10 sm:flex-row sm:items-center sm:justify-between">
         <p className="t-micro">PrepPulse</p>
-        <p className="t-meta text-ink-4">
-          Audio never leaves your browser. Only the transcript is stored.
-        </p>
+        <div className="flex flex-wrap items-center gap-6">
+          <Link href="/pricing" className="t-meta text-ink-4 transition-colors hover:text-ink-2">
+            Pricing
+          </Link>
+          <p className="t-meta text-ink-4">
+            Audio never leaves your browser. Only the transcript is stored.
+          </p>
+        </div>
       </footer>
     </div>
   );
