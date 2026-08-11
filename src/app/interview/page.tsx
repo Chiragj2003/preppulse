@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import { checkCanStart } from "@/lib/gate";
 import { getProfile } from "@/lib/practice";
 import { requireUser } from "@/lib/session";
 import { INTERVIEWER_PERSONAS, PERSONA_BLURBS, PERSONA_LABELS } from "@/lib/types";
@@ -15,10 +16,30 @@ export const metadata: Metadata = { title: "Mock interview" };
  */
 export default async function InterviewSetupPage() {
   const user = await requireUser("/interview");
-  const profile = await getProfile(user.id);
+  const [profile, locked] = await Promise.all([
+    getProfile(user.id),
+    checkCanStart(user.id, "interview"),
+  ]);
 
   const resume = profile?.resumeExtractedData;
   const ready = Boolean(resume || profile?.skillsDescription);
+
+  if (locked) {
+    return (
+      <div className="mx-auto max-w-2xl px-5 pt-32 pb-24 sm:px-6">
+        <p className="t-micro mb-6">Mock interview</p>
+        <h1 className="t-display max-w-[14ch]">
+          Interviews are <span className="text-ink-3">part of Pro.</span>
+        </h1>
+        <p className="t-lead mt-8 max-w-md">{locked.message}</p>
+        <Link href="/pricing" className="mt-10 inline-block">
+          <Button variant="primary" size="lg">
+            See the plans
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   if (!ready) {
     return (

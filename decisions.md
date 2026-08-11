@@ -433,12 +433,204 @@ the momentum that makes the mode worth doing.
 
 ---
 
+# Progress & gamification (Phase 5)
+
+## D36. Redis is optional, and everything falls back to Postgres
+
+**Decision.** `lib/redis.ts` returns `null` on any miss, timeout or missing
+credentials, and every caller treats `null` as "cache miss" and reads Postgres
+instead.
+
+**Why.** Upstash isn't configured on this project. Building the leaderboard
+Redis-only would have shipped a feature that does nothing; building it
+Postgres-only would have thrown away the reason Redis is in the stack at all.
+The fallback means the feature is complete today and gets faster the moment
+credentials appear.
+
+**Rejected.** The `@upstash/redis` SDK. The REST protocol is
+`POST ["CMD", ...]` with a bearer token — about a dozen lines for the six
+commands used. Same reasoning as the Resend and Gemini clients.
+
+**Reverse.** Delete the fallback in `lib/leaderboard.ts` once Redis is a hard
+dependency.
+
+## D37. Redis earns its place on two real jobs, not as decoration
+
+**Decision.** Redis does the rolling leaderboard (sorted set) and cached topic
+briefs (string with TTL). Nothing else.
+
+**Why.** The plan was explicit that Redis had to be a genuine win. Reading the
+top ten from a sorted set is one O(log N) command; the Postgres equivalent
+scans a week of sessions, joins evaluations and users, groups and sorts — fine
+at this size, wasteful on every homepage render at any real size.
+
+## D38. Leaderboard keys are bucketed by ISO week
+
+**Decision.** `lb:2026-w11`, with a TTL slightly longer than a week.
+
+**Why.** The bucket expires on its own, so there is no trimming job and no way
+to accumulate stale members forever. A single permanent key would need manual
+eviction, which is a cron job nobody remembers to write.
+
+## D39. A leaderboard shows first names only
+
+**Decision.** First name, or the email local part if there is no name. Never
+the full name, never the email.
+
+**Why.** It is the one screen where other people's identities are on display.
+Showing the least that still makes it feel like a room of humans is the correct
+default, and it costs nothing.
+
+## D40. Rest days are excluded from the trend, not counted as zero
+
+**Decision.** `trend()` only averages days that were actually practised.
+
+**Why.** Counting a rest day as a zero would make taking a weekend off look
+like your speaking collapsed. The chart makes the same distinction visually:
+the line breaks across a gap rather than interpolating through it, because
+joining the gap would invent a score for a day nobody practised.
+
+**Guarded by.** An explicit test asserting a two-day break scores a trend of 0.
+
+## D41. The progress chart is hand-drawn SVG
+
+**Decision.** No charting library.
+
+**Why.** A library brings its own visual opinions — gridlines, tooltips, a
+legend — that then need overriding to match the design system. Sixty lines of
+SVG inherits the tokens directly, ships nothing to the browser (it's a server
+component), and the y-axis is fixed at 0-100 so a four-point wobble can't be
+auto-scaled into a cliff.
+
+## D42. Badges are derived, understated, and locked ones stay visible
+
+**Decision.** No badge table. Every badge is computed from streaks, session
+counts and scores at render time. Locked badges are listed at 40% opacity.
+
+**Why.** Awarding rows in a table means a backfill job whenever a threshold
+changes; deriving them means changing a number in one file. Showing locked
+badges gives something to aim at — a list of only what you've earned has no
+forward motion.
+
+**Tone.** No confetti, no arcade counters. Thresholds are 7/25/30 rather than
+round-number vanity: seven days is a real habit, ninety is a genuinely rare
+score.
+
+## D43. The streak token bonus is capped
+
+**Decision.** `tokensForSession` = 10 floor + score/5 + min(streak, 10).
+
+**Why.** An uncapped streak multiplier would make week three worth more than
+doing the work well, which is the wrong incentive for a practice tool. There's
+a test asserting quality is always worth more than the streak bonus.
+
+## D44. Sharing is opt-in, partial, and revocable
+
+**Decision.** Off by default. A random 12-character slug, separate from the
+session id. The public card shows the score, topic and breakdown — never the
+transcript, the coaching notes or the person's name.
+
+**Why.** Sharing a result should not mean publishing a recording of yourself
+thinking aloud. The slug is separate from the id so a URL can't be
+reverse-engineered, and revoking is a slug change rather than deleting the
+session. A revoked share 404s identically to one that never existed.
+
+---
+
+# Monetization (Phase 6)
+
+## D45. Prices live in the database, never in code
+
+**Decision.** A `plans` table holds price, limits, features and unlocked modes.
+`db/plans.ts` is a *seed*, not the source of truth.
+
+**Why.** A price change should be a row update, not a deploy. Hardcoded prices
+are also how the pricing page ends up disagreeing with the checkout screen.
+
+**Money is stored in minor units** (paise) as an integer. Never a float.
+
+## D46. One entitlement checkpoint, not scattered plan checks
+
+**Decision.** `lib/gate.ts` is the only place that decides whether a user may
+start something. `lib/billing.ts` holds the pure entitlement maths.
+
+**Why.** Adding a plan must not mean hunting for `if (plan === 'pro')` across
+the app, and there should be exactly one function to audit when asking "can
+this user do this?".
+
+## D47. The gate redirects; it does not throw
+
+**Decision.** `gateOrRedirect` sends the user to `/pricing`. Pages separately
+call `checkCanStart` and render a paywall instead of a start button.
+
+**Why.** Found in live testing: throwing from a form action renders Next's
+error boundary, so the carefully written explanation became
+*"Application error: a server-side exception has occurred"*. The user saw a
+crash where a paywall was intended.
+
+**Both layers exist on purpose.** The page check is about honesty — never offer
+a button that can't work. The action check is the security backstop, because a
+server action can be called directly.
+
+## D48. Subscription validity checks the date, not just the status
+
+**Decision.** `isSubscriptionActive` requires `status === 'active'` **and** an
+unexpired period.
+
+**Why.** With a real gateway, a row can sit at `active` until a webhook
+arrives. A webhook that never arrives must not grant free access forever.
+
+## D49. The dummy gateway is one function
+
+**Decision.** `capturePayment()` in `app/pricing/actions.ts` is the only thing
+that knows how payment works. It fabricates a reference and returns success.
+
+**Why.** The whole point of a scaffold is that replacing it is small. Swapping
+in Stripe or Razorpay means changing that function and the checkout component,
+plus adding a webhook — no schema migration, because `subscriptions` already
+has `provider`, `provider_ref` and `current_period_end`.
+
+**Honesty.** The checkout page says plainly that no gateway is connected and
+that whatever is typed into the card fields is discarded. A fake payment form
+that doesn't say it's fake is the wrong thing to ship, even in a portfolio.
+
+## D50. The free tier includes the actual product
+
+**Decision.** Daily practice, full scoring and coaching are free forever, with
+a three-a-day cap. Paid tiers unlock the *other rooms*.
+
+**Why.** The daily habit is what the product is for. Gating it would make the
+free tier a demo rather than a product, and nobody builds a habit inside a
+demo.
+
+---
+
 # Open items
 
 - `requireEmailVerification` is off while email delivery is unreliable. Marked
   with a `ponytail:` comment in `lib/auth.ts`. Turn on once a sending domain is
   verified.
+- Upstash is not configured, so the leaderboard currently runs its Postgres
+  path. Adding `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` switches
+  it over with no code change.
+- Cached topic briefs have a Redis helper (`getCached`/`setCached`) but nothing
+  populates them yet — the brief generator is a Phase 10 polish item.
 - The Turbopack dev CSS parser warns about `@layer properties;` in Tailwind's
   own generated output. Non-fatal; the production build is clean.
 - `drizzle-kit` pulls a dev-only `esbuild` advisory through deprecated
   `@esbuild-kit/*` packages. Not in the production bundle.
+
+---
+
+# Operational traps
+
+Recorded because each one cost real time and none produced a useful error.
+
+| Trap | Symptom | Fix |
+| --- | --- | --- |
+| Two processes writing `.next` | `ENOENT ... _buildManifest.js.tmp.*` flood, dead server | Never run `next build` while `next dev` is running. Kill node, delete `.next`, restart. |
+| Stale Turbopack cache | An import error that contradicts a passing `tsc` | Delete `.next` and restart |
+| PowerShell 5.1 round-trip | UTF-8 renders as `â”€`; a BOM appears | `Get-Content -Raw` decodes as ANSI, `Set-Content -Encoding utf8` writes a BOM. Use ASCII in config files. |
+| `??` on a user's name | "Good evening, " with no name | Magic-link signup stores `""`, not null. Use `||`. |
+| Better Auth on a non-3000 port | Every auth request 403s | `trustedOrigins` must cover the serving origin |
+| Throwing from a form action | "Application error: a server-side exception" | Redirect instead; render the state on the page |

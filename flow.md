@@ -51,13 +51,16 @@ to an LLM. Secrets stay server-side, and there is no REST layer for our own UI.
 | Pages / components | `src/app`, `src/components` | lib, db types | Call providers directly |
 | Server actions | `src/app/**/actions.ts` | lib, db | Be imported by other actions |
 | Domain | `src/lib` | db, other lib | Import from `src/app` |
-| Pure maths | `scoring.ts`, `interview-scoring.ts`, `gd-metrics.ts` | types only | **Any I/O whatsoever** |
+| Pure maths | `scoring.ts`, `interview-scoring.ts`, `gd-metrics.ts`, `gamification.ts`, `billing.ts` | types only | **Any I/O whatsoever** |
 | AI clients | `src/lib/ai` | lib, db | Be called from a client component |
+| Cache | `src/lib/redis.ts` | — | Ever throw — returns `null` on any failure |
 | Data | `src/db` | — | Import from lib (except types) |
 
-The pure-maths row is the one that matters. Those three files decide people's
-scores, and keeping I/O out of them is what makes them testable with
-`node:assert` and no framework.
+The pure-maths row is the one that matters. Those five files decide people's
+scores and what they've paid for, and keeping I/O out of them is what makes
+them testable with `node:assert` and no framework.
+
+`plans` is read at request time, so prices are never compiled into the app.
 
 ---
 
@@ -69,8 +72,10 @@ erDiagram
     users ||--|| profiles : has
     users ||--|| streaks : has
     users ||--o{ ai_usage : incurs
+    users ||--o{ subscriptions : holds
 
     topics ||--o{ practice_sessions : "seeds"
+    plans ||--o{ subscriptions : "priced by"
 
     practice_sessions ||--o| evaluations : "extempore result"
     practice_sessions ||--o{ interview_questions : "interview"
@@ -221,7 +226,81 @@ opening, argument, rebuttal, closing.
 
 ---
 
-## 7. Scoring pipeline
+## 7. Flow: entitlements and checkout (Phase 6)
+
+Two enforcement points, on purpose.
+
+```mermaid
+flowchart TB
+    P["Setup page<br/>(server component)"] -->|checkCanStart| G{"Entitled?"}
+    G -->|no| PW["Render a paywall<br/>with the reason"]
+    G -->|yes| BTN["Render the start button"]
+
+    BTN --> A["Server action"]
+    A -->|gateOrRedirect| G2{"Entitled?"}
+    G2 -->|no| RD["redirect /pricing"]
+    G2 -->|yes| GO["Create session"]
+
+    style PW fill:#3a2a1d
+    style RD fill:#3a2a1d
+```
+
+The page check is **honesty** — never offer a button that cannot work. The
+action check is **security** — a server action can be called directly, so the
+page check alone would be decorative.
+
+Neither throws. Throwing from a form action renders Next's error boundary, so
+the explanation never reaches the user.
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant C as /pricing/checkout
+    participant A as checkout()
+    participant D as Neon
+
+    U->>C: choose a plan
+    C->>D: read plan (price, limits, modes)
+    Note over C: card fields are real inputs<br/>but are never read or stored
+    U->>A: submit
+    A->>A: capturePayment() - the ONLY gateway-aware function
+    A->>D: cancel any active subscription
+    A->>D: INSERT subscription (provider, ref, period end)
+    A-->>U: redirect /pricing?changed=pro
+```
+
+Swapping in a real gateway changes `capturePayment()` and the checkout
+component, plus a webhook. No schema migration: `subscriptions` already carries
+`provider`, `provider_ref` and `current_period_end`.
+
+---
+
+## 8. Flow: leaderboard with fallback (Phase 5)
+
+```mermaid
+flowchart LR
+    S["Session scored"] --> R{"Redis<br/>configured?"}
+    R -->|yes| Z["ZADD lb:2026-w11<br/>keep the best score<br/>EXPIRE 9 days"]
+    R -->|no| SKIP["skip - Postgres<br/>is already the record"]
+
+    RD["Homepage / progress"] --> Q{"Redis hit?"}
+    Q -->|yes| FAST["ZRANGE REV 0..9<br/>one O(log N) command"]
+    Q -->|null: miss, timeout,<br/>or not configured| SLOW["Postgres:<br/>scan 7 days, join, group, sort"]
+
+    style FAST fill:#1d3a2a
+    style SLOW fill:#2a2a3a
+```
+
+Every Redis helper returns `null` on any failure, so an outage degrades to the
+Postgres path rather than failing the page. Recording is best-effort and
+wrapped in `.catch()`: the leaderboard is a nicety, and it must never fail a
+request whose real work already succeeded.
+
+Week buckets expire on their own, so there is no trimming job.
+
+---
+
+## 9. Scoring pipeline
 
 The rule, drawn once:
 
@@ -244,7 +323,7 @@ would be indefensible.
 
 ---
 
-## 8. Cross-cutting concerns
+## 10. Cross-cutting concerns
 
 **Every AI call, without exception:**
 
@@ -268,7 +347,7 @@ session id alone is never sufficient.
 
 ---
 
-## 9. Route map
+## 11. Route map
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
@@ -282,26 +361,38 @@ session id alone is never sufficient.
 | `/interview` | required | Persona, role, question count |
 | `/interview/[id]` | required | One question at a time, verdict each |
 | `/interview/[id]/report` | required | Aggregate + question by question |
-| `/discuss` | required | GD or debate setup |
+| `/discuss` | required | GD or debate setup (renders a paywall if locked) |
 | `/discuss/[id]` | required | Live room |
+| `/progress` | required | Chart, badges, standing |
+| `/pricing` | public | Plans read from the database |
+| `/pricing/checkout` | required | Dummy gateway |
+| `/s/[slug]` | **public** | Opt-in share card — score only, no transcript |
 | `/api/auth/[...all]` | — | Better Auth |
+
+`/s/[slug]` is the only public authenticated-data route. It is reachable solely
+via an unguessable opt-in slug and deliberately shows a partial record.
 
 ---
 
-## 10. Build & test
+## 12. Build & test
 
 ```bash
 npm run dev        # single server on 3000 (autoPort false — two servers corrupt .next)
 npm run typecheck  # tsc --noEmit
 npm run lint
-npm run test       # three pure-logic suites, node:assert, no framework
-npm run build
+npm run test       # five pure-logic suites, node:assert, no framework
+npm run build      # NEVER while dev is running - both write .next
 
 npm run db:generate && npm run db:migrate
-npm run db:seed    # idempotent
+npm run db:seed    # idempotent: topics and plans
 ```
 
-Tests cover the maths that decides someone's score: filler matching, pace and
-density curves, weighted composites, retry rules, speaking-share bands and
-debate stage order. Everything else is verified by driving the real app in a
-browser against the real database.
+Tests cover the maths that decides someone's score or what they've paid for:
+filler matching, pace and density curves, weighted composites, retry rules,
+speaking-share bands, debate stage order, badge thresholds, token caps, trend
+excluding rest days, entitlements, and month-end rollover. Everything else is
+verified by driving the real app in a browser against the real database.
+
+**Optional environment.** `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` switch the leaderboard from Postgres to Redis with
+no code change. Absent, everything still works.

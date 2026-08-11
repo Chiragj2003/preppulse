@@ -113,6 +113,13 @@ export const practiceSessions = pgTable(
     config: jsonb("config").$type<SessionConfig>(),
     /** Denormalised so a session still reads correctly if a topic is retired. */
     promptSnapshot: text("prompt_snapshot"),
+    /**
+     * Sharing is opt-in and off by default. The slug is separate from the id
+     * so revoking a share is a slug change, not a session deletion, and so a
+     * shared URL can never be reverse-engineered from a session id.
+     */
+    shareSlug: text("share_slug").unique(),
+    sharedAt: timestamp("shared_at", { withTimezone: true }),
     durationSeconds: integer("duration_seconds"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -299,6 +306,62 @@ export const discussionTurns = pgTable(
   (table) => [uniqueIndex("discussion_turns_slot_unique").on(table.sessionId, table.position)],
 );
 
+/* ── plans (Phase 6) ───────────────────────────────────────────────────────
+ * Prices and limits live in the database, never in the code. Changing a price
+ * must not require a deploy, and a hardcoded price is the thing that ends up
+ * disagreeing with the checkout screen.
+ */
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  tagline: text("tagline").notNull(),
+  /** Minor units (paise/cents) - never a float for money. */
+  priceMonthly: integer("price_monthly").notNull().default(0),
+  currency: text("currency").notNull().default("INR"),
+  features: jsonb("features").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** null means unlimited. */
+  dailySessionLimit: integer("daily_session_limit"),
+  /** Modes this plan unlocks beyond the free set. */
+  unlockedModes: jsonb("unlocked_modes").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "active",
+  "cancelled",
+  "expired",
+]);
+
+/* ── subscriptions ─────────────────────────────────────────────────────────
+ * Deliberately shaped like a real gateway's data even though checkout is a
+ * dummy: provider, provider_ref and a period end. Swapping in Stripe or
+ * Razorpay later becomes a change to one component plus a webhook, not a
+ * schema migration.
+ */
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id, { onDelete: "restrict" }),
+    status: subscriptionStatusEnum("status").notNull().default("active"),
+    provider: text("provider").notNull().default("dummy"),
+    providerRef: text("provider_ref"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("subscriptions_user_idx").on(table.userId, table.status)],
+);
+
 /* ── relations ─────────────────────────────────────────────────────────── */
 export const practiceSessionsRelations = relations(practiceSessions, ({ one }) => ({
   topic: one(topics, { fields: [practiceSessions.topicId], references: [topics.id] }),
@@ -327,6 +390,8 @@ export const streaksRelations = relations(streaks, ({ one }) => ({
 export type InterviewQuestion = typeof interviewQuestions.$inferSelect;
 export type InterviewAnswer = typeof interviewAnswers.$inferSelect;
 export type DiscussionTurn = typeof discussionTurns.$inferSelect;
+export type Plan = typeof plans.$inferSelect;
+export type Subscription = typeof subscriptions.$inferSelect;
 export type Topic = typeof topics.$inferSelect;
 export type PracticeSession = typeof practiceSessions.$inferSelect;
 export type Evaluation = typeof evaluations.$inferSelect;

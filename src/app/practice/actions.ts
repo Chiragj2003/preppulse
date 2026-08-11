@@ -17,9 +17,11 @@ import {
   getTopicById,
   recordPractice,
 } from "@/lib/practice";
+import { gateOrRedirect } from "@/lib/gate";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { requireUserApi } from "@/lib/session";
-import { tokensForScore } from "@/lib/scoring";
+import { tokensForSession } from "@/lib/gamification";
+import { recordScore } from "@/lib/leaderboard";
 
 export interface ActionError {
   code: AppErrorCode;
@@ -50,6 +52,7 @@ function fail(error: unknown, context: string): { ok: false; error: ActionError 
  */
 export async function startSession(formData: FormData) {
   const user = await requireUserApi();
+  await gateOrRedirect(user.id, "random_topic");
   const quick = formData.get("mode") === "quick";
 
   const requestedId = z.string().uuid().safeParse(formData.get("topicId"));
@@ -147,10 +150,17 @@ export async function evaluateSession(
     const { streak, extended } = await recordPractice(
       user.id,
       input.localDate,
-      tokensForScore(result.overallScore),
+      tokensForSession(result.overallScore, 0),
+    );
+
+    // Best-effort: the leaderboard is a nicety, and a Redis hiccup must never
+    // fail a request whose actual work has already succeeded.
+    await recordScore(user.id, user.name ?? user.email ?? "Someone", result.overallScore).catch(
+      () => {},
     );
 
     revalidatePath("/dashboard");
+    revalidatePath("/progress");
 
     return {
       ok: true,

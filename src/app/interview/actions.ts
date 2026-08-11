@@ -16,6 +16,7 @@ import { analyseAnswer, generateQuestions } from "@/lib/ai/interview";
 import { assertPdf, MAX_RESUME_BYTES } from "@/lib/ai/gemini";
 import { extractResume } from "@/lib/ai/interview";
 import { AppError, toAppError, type AppErrorCode } from "@/lib/errors";
+import { gateOrRedirect } from "@/lib/gate";
 import { runningAverage } from "@/lib/interview-scoring";
 import { getProfile, recordPractice } from "@/lib/practice";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -99,6 +100,7 @@ const StartInput = z.object({
  */
 export async function startInterview(formData: FormData) {
   const user = await requireUserApi();
+  await gateOrRedirect(user.id, "interview");
 
   const input = StartInput.parse({
     persona: formData.get("persona"),

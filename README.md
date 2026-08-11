@@ -18,8 +18,8 @@ for an interview this week.
 | 2 | Random Topic / Extempore + Daily Roll (Groq) | Done |
 | 3 | Mock Interview (Gemini) + resume-driven recommendation | Done |
 | 4 | Group Discussion + Debate (Groq) | Done |
-| 5 | Progress, gamification & Redis | Not started |
-| 6 | Monetization scaffold | Not started |
+| 5 | Progress, gamification & Redis | Done (Redis optional — falls back to Postgres) |
+| 6 | Monetization scaffold | Done |
 | 7 | Conversation & real-world scenario modes | Not started |
 | 8 | Admin & cost tracking | Groundwork in place (`ai_usage` written on every call) |
 | 9 | Hinglish / Hindi language support | Groundwork in place (schema + prompt hooks) |
@@ -66,6 +66,7 @@ All secrets live in a single git-ignored `.env`. Only `DATABASE_URL`,
 | `GOOGLE_CLIENT_ID` / `_SECRET` | no | Google Cloud Console — magic link works without it |
 | `RESEND_API_KEY` | no | Without it, magic links print to the dev terminal |
 | `RATE_LIMIT_PER_MINUTE` / `_PER_DAY` | no | Defaults 6 / 60 |
+| `UPSTASH_REDIS_REST_URL` / `_TOKEN` | no | Switches the leaderboard to Redis; falls back to Postgres without it |
 
 ### Scripts
 
@@ -74,7 +75,7 @@ All secrets live in a single git-ignored `.env`. Only `DATABASE_URL`,
 | `npm run dev` | Dev server (Turbopack) |
 | `npm run build` | Production build |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run test` | Three pure-logic suites (no framework, plain asserts) |
+| `npm run test` | Five pure-logic suites (no framework, plain asserts) |
 | `npm run db:generate` | Generate SQL migration from the Drizzle schema |
 | `npm run db:migrate` | Apply migrations to Neon |
 | `npm run db:seed` | Load / refresh the topic pool (idempotent) |
