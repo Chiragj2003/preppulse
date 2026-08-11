@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono, Caveat } from "next/font/google";
 
 import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
@@ -23,6 +23,7 @@ const display = Bricolage_Grotesque({
 
 const sans = Geist({ variable: "--font-geist-sans", subsets: ["latin"], display: "swap" });
 const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], display: "swap" });
+const doodle = Caveat({ variable: "--font-caveat", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: {
@@ -46,7 +47,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   // whole --font-sans becomes invalid, and every font-family silently falls
   // back to preflight's system stack.
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <html
+      lang="en"
+      className={`${display.variable} ${sans.variable} ${mono.variable} ${doodle.variable}`}
+      suppressHydrationWarning
+    >
       <body className="atmosphere grain min-h-dvh">
         <SiteHeader />
         <main>{children}</main>

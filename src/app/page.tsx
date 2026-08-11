@@ -34,10 +34,10 @@ export default async function HomePage() {
           </span>
         </p>
 
-        <h1 className="t-display rise max-w-[15ch] [animation-delay:60ms]">
+        <h1 className="t-display rise max-w-[15ch] font-doodle text-5xl font-bold leading-[1.15] md:text-6xl lg:text-7xl [animation-delay:60ms]">
           Two minutes
           <br />
-          <span className="text-ink-3">of talking</span>
+          <span className="inline-block -rotate-2 bg-gradient-to-r from-accent via-indigo-400 to-purple-400 bg-clip-text text-transparent opacity-90 px-1">of talking</span>
           <br />
           changes how
           <br />
