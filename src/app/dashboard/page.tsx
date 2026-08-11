@@ -125,7 +125,7 @@ export default async function DashboardPage() {
               title: "Role Play",
               body: "Workplace scenarios like salary negotiation or angry customers.",
             },
-          ].map((room, i) => (
+          ].map((room) => (
             <li key={room.title}>
               <Link
                 href={room.href}
