@@ -8,7 +8,8 @@ import { neon } from "@neondatabase/serverless";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 
-import { topics } from "./app-schema";
+import { plans, topics } from "./app-schema";
+import { SEED_PLANS } from "./plans";
 import { SEED_TOPICS } from "./topics";
 
 async function main() {
@@ -29,6 +30,29 @@ async function main() {
       },
     })
     .returning({ id: topics.id });
+
+  // Plans are upserted on slug, so re-running updates prices in place rather
+  // than creating a second "Pro" that nobody is subscribed to.
+  const seededPlans = await db
+    .insert(plans)
+    .values(SEED_PLANS)
+    .onConflictDoUpdate({
+      target: plans.slug,
+      set: {
+        name: sql.raw("excluded.name"),
+        tagline: sql.raw("excluded.tagline"),
+        priceMonthly: sql.raw("excluded.price_monthly"),
+        currency: sql.raw("excluded.currency"),
+        features: sql.raw("excluded.features"),
+        dailySessionLimit: sql.raw("excluded.daily_session_limit"),
+        unlockedModes: sql.raw("excluded.unlocked_modes"),
+        sortOrder: sql.raw("excluded.sort_order"),
+        isActive: sql.raw("excluded.is_active"),
+      },
+    })
+    .returning({ slug: plans.slug });
+
+  console.log(`Seeded ${seededPlans.length} plans: ${seededPlans.map((p) => p.slug).join(", ")}`);
 
   const byCategory = SEED_TOPICS.reduce<Record<string, number>>((acc, t) => {
     acc[t.category] = (acc[t.category] ?? 0) + 1;
