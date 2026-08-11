@@ -1,6 +1,7 @@
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 
+import { Surface } from "@/components/ui/surface";
 import { getLeaderboard } from "@/lib/leaderboard";
 import { getDailyTopic } from "@/lib/practice";
 import { getSession } from "@/lib/session";
