@@ -332,6 +332,181 @@ optimistic turn before appending the replies.
 
 ---
 
+## Fa. Progress & gamification
+
+<details>
+<summary><b>Fa1. ⭐</b> Upstash isn't configured. Why is there Redis code at all, and what happens without it?</summary>
+
+Every Redis helper returns `null` on a miss, a timeout, or missing
+credentials, and every caller treats `null` as "cache miss" and reads Postgres
+instead. So the leaderboard is complete today and gets faster the moment
+credentials appear — no code change.
+
+Building it Redis-only would have shipped a dead feature; Postgres-only would
+have thrown away the reason Redis is in the stack.
+
+**Interview angle:** this is the "graceful degradation" answer, and it's more
+interesting than "I added a cache".
+</details>
+
+<details>
+<summary><b>Fa2.</b> What exactly does Redis do here, and why is that a real win?</summary>
+
+Two jobs: the rolling leaderboard (a sorted set) and cached topic briefs (a
+string with TTL).
+
+Reading the top ten is one `ZRANGE`, O(log N). The Postgres equivalent scans a
+week of sessions, joins evaluations and users, groups and sorts — fine at this
+size, wasteful on every homepage render at any real size.
+
+The plan was explicit that Redis had to be a genuine win rather than a résumé
+line, and that's the distinction being drawn.
+</details>
+
+<details>
+<summary><b>Fa3.</b> Leaderboard keys look like `lb:2026-w11`. Why bucket by week?</summary>
+
+The bucket expires on its own. A single permanent sorted set would need a
+trimming job to evict stale members — a cron nobody remembers to write. Weekly
+keys with a nine-day TTL make eviction the database's problem.
+</details>
+
+<details>
+<summary><b>Fa4. ⭐</b> Someone takes a weekend off. What happens to their trend line, and why?</summary>
+
+Nothing. `trend()` only averages days that were **actually practised**.
+
+Counting rest days as zeroes would make taking a weekend off look like your
+speaking ability collapsed. The chart makes the same distinction visually — the
+line *breaks* across a gap rather than interpolating through it, because
+joining the gap would invent a score for a day nobody practised.
+
+There's a test asserting a two-day break yields a trend of exactly 0.
+</details>
+
+<details>
+<summary><b>Fa5.</b> Why is the progress chart hand-written SVG rather than a chart library?</summary>
+
+A library brings its own visual opinions — gridlines, tooltips, a legend — that
+then need overriding to match the design system. Sixty lines of SVG inherits
+the tokens directly and ships **nothing** to the browser, because it's a server
+component.
+
+One detail worth noting: the y-axis is pinned to 0–100. Auto-scaling to the
+data would turn a four-point wobble into a visual cliff, which is a chart lying
+about the size of a change.
+</details>
+
+<details>
+<summary><b>Fa6.</b> Where are badges stored?</summary>
+
+Nowhere. They're computed at render time from streaks, session counts and
+scores.
+
+Awarding rows would mean a backfill job every time a threshold changes;
+deriving them means editing one number in one file. Locked badges stay visible
+at reduced opacity so there's something to aim at — a list of only what you've
+earned has no forward motion.
+</details>
+
+<details>
+<summary><b>Fa7.</b> Why does the streak token bonus cap at 10?</summary>
+
+An uncapped multiplier would make being on week three worth more than doing the
+work well — the wrong incentive for a practice tool. There's a test asserting
+that quality is always worth more than the streak bonus.
+</details>
+
+<details>
+<summary><b>Fa8. ⭐</b> Someone shares a result. What can a stranger with that link see?</summary>
+
+The score, the topic, the six-dimension breakdown, word count and pace. **Not**
+the transcript, not the coaching notes, not the person's name.
+
+Sharing a result shouldn't mean publishing a recording of yourself thinking
+aloud. The slug is random and separate from the session id, so a URL can't be
+derived from an id; revoking is a slug change rather than a deletion, and a
+revoked link 404s identically to one that never existed.
+</details>
+
+---
+
+## Fb. Monetization
+
+<details>
+<summary><b>Fb1. ⭐</b> Where do prices live, and why does it matter?</summary>
+
+In the `plans` table. `db/plans.ts` is a *seed*, not the source of truth — the
+pricing page reads the database at request time.
+
+A price change should be a row update, not a deploy. Hardcoded prices are also
+exactly how a pricing page ends up disagreeing with the checkout screen.
+
+Money is stored in **minor units as an integer** (49900 = ₹499). Never a float.
+</details>
+
+<details>
+<summary><b>Fb2. ⭐</b> The paywall crashed with "Application error". What was the bug, and what's the rule?</summary>
+
+The gate `throw`ew an `AppError` from inside a server action invoked by a
+`<form action>`. A thrown server action renders Next's error boundary — so the
+carefully written paywall message became a generic crash page.
+
+**Rule: don't throw from a form action for an expected state.** `gateOrRedirect`
+now redirects to `/pricing`, and the *page* separately calls `checkCanStart` and
+renders a paywall instead of a start button.
+
+Both layers exist on purpose: the page check is honesty (never offer a button
+that can't work), the action check is security (a server action can be called
+directly).
+</details>
+
+<details>
+<summary><b>Fb3.</b> Why check the period end when the status column already says "active"?</summary>
+
+With a real gateway, a row can sit at `active` until a webhook arrives. A
+webhook that never arrives must not grant free access forever.
+
+So `isSubscriptionActive` requires `status === 'active'` **and** an unexpired
+period. There's a test for exactly that case.
+</details>
+
+<details>
+<summary><b>Fb4. ⭐</b> What has to change to swap the dummy checkout for Stripe?</summary>
+
+`capturePayment()` and the checkout component, plus a webhook handler.
+
+Nothing else — no schema migration, because `subscriptions` already carries
+`provider`, `provider_ref` and `current_period_end`. And no screen anywhere
+asks "what plan is this?", because entitlements are resolved in `lib/billing.ts`
+and enforced in `lib/gate.ts`.
+
+That's the whole point of a scaffold: it's only a scaffold if replacing it is
+small.
+</details>
+
+<details>
+<summary><b>Fb5.</b> Why is daily practice free rather than the hook for a paid tier?</summary>
+
+The daily habit is what the product is *for*. Gating it would make the free
+tier a demo, and nobody builds a habit inside a demo. Paid tiers unlock the
+other rooms — interviews, group discussion, debate — which are the things you
+need occasionally rather than daily.
+</details>
+
+<details>
+<summary><b>Fb6.</b> The checkout has real card inputs. Isn't that misleading?</summary>
+
+It would be if it didn't say so. The page states plainly that no gateway is
+connected and that whatever is typed is discarded rather than transmitted, and
+the fields are prefilled with obvious test values.
+
+A fake payment form that doesn't announce it's fake is the wrong thing to ship,
+even in a portfolio.
+</details>
+
+---
+
 ## F. Design system
 
 <details>
@@ -526,6 +701,25 @@ covers Vercel preview URLs and — gated on `NODE_ENV` so it never ships — any
 localhost port.
 </details>
 
+<details>
+<summary><b>H6. ⭐</b> Running <code>npm run build</code> killed the dev server. Why?</summary>
+
+Both `next build` and `next dev` write to `.next`. Run them together and they
+delete each other's `_buildManifest.js.tmp.*` files before the rename lands —
+an `ENOENT` flood and a dead server.
+
+Same root cause as running two dev servers. **Never build while dev is
+running.** Kill node, delete `.next`, restart.
+</details>
+
+<details>
+<summary><b>H7.</b> A server action throws for an expected state. What does the user see?</summary>
+
+"Application error: a server-side exception has occurred." Next renders the
+error boundary — your message never arrives. Redirect, or render the state on
+the page instead.
+</details>
+
 ---
 
 ## Self-assessment
@@ -538,6 +732,8 @@ Rate yourself honestly on each area:
 | Scoring philosophy | | | |
 | Interview engine | | | |
 | GD & debate | | | |
+| Progress & gamification | | | |
+| Monetization | | | |
 | Design system | | | |
 | Reliability & security | | | |
 
@@ -545,5 +741,17 @@ The middle column is the one interviews test. If you can state a decision but
 not the alternative you rejected, go back to `decisions.md` — every entry names
 what was rejected and why.
 
-**The three to have ready cold:** B1 (countable vs judgement), D3 (retry takes
-the max), G1 (rate limiting on the usage table).
+**The four to have ready cold:**
+
+1. **B1** — countable vs judgement. The governing rule of the codebase, and the
+   best thing to lead with.
+2. **D3** — retries take the max, because averaging would punish the people
+   using the Retry button properly.
+3. **G1** — rate limiting counts the cost-tracking table, so it needed no new
+   infrastructure and survives serverless.
+4. **Fb4** — swapping the payment gateway touches two files, because
+   entitlements were never scattered through the screens.
+
+**If you only remember one sentence:** *anything countable is counted in code;
+only judgements go to a model.* Almost every other decision in this project
+falls out of that one.
