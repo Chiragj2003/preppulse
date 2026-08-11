@@ -84,6 +84,43 @@ export default async function HomePage() {
 
       <div className="rule" />
 
+      {/* ── The other rooms ──────────────────────────────────────────────── */}
+      <section className="py-24 sm:py-32">
+        <p className="t-micro mb-12">Other rooms</p>
+        <ul className="grid gap-px sm:grid-cols-3">
+          {[
+            {
+              href: session?.user ? "/discuss" : "/sign-in?next=/discuss",
+              title: "Group discussion",
+              body: "Four panelists who argue with each other as well as with you.",
+            },
+            {
+              href: session?.user ? "/discuss?mode=debate" : "/sign-in?next=/discuss",
+              title: "Debate",
+              body: "Pick a side. Your opponent takes the other and never folds.",
+            },
+            {
+              href: session?.user ? "/interview" : "/sign-in?next=/interview",
+              title: "Mock interview",
+              body: "Questions written from your own background, judged one at a time.",
+            },
+          ].map((room, i) => (
+            <li key={room.title}>
+              <Link
+                href={room.href}
+                className="group flex h-full flex-col justify-between gap-10 border-t border-line py-8 pr-6 transition-colors hover:border-accent/50"
+                style={{ animationDelay: `${i * 70}ms` }}
+              >
+                <h3 className="t-heading transition-colors group-hover:text-accent">{room.title}</h3>
+                <p className="t-body max-w-xs text-ink-3">{room.body}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <div className="rule" />
+
       {/* ── How it works: numbered editorial rows, not a three-card grid ─── */}
       <section className="py-24 sm:py-32">
         <p className="t-micro mb-14">How a session goes</p>
