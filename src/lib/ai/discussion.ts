@@ -4,6 +4,7 @@ import { z } from "zod";
 import { env } from "@/lib/env";
 import { GD_PERSONAS, MODERATOR, STAGE_BRIEF, type DebateStage } from "@/lib/gd-metrics";
 import { toAppError } from "@/lib/errors";
+import { isDeflection, isRepetitive, type Scenario } from "@/lib/scenarios";
 import type { DiscussionPersona } from "@/lib/types";
 import { recordUsage } from "./usage";
 
@@ -187,6 +188,94 @@ Return ONLY JSON:
     sessionId: input.sessionId,
     operation: "discussion_turn",
   });
+}
+
+/**
+ * Conversation and scenario role-play.
+ *
+ * Reuses everything: the same Groq client, the same reply schema, the same
+ * turn table and room UI as group discussion. Only the counterpart and the
+ * brief change.
+ *
+ * The one addition is a re-ask. If the reply is a deflection ("tell me more")
+ * or a rephrasing of something the counterpart already said, we ask once more
+ * with an explicit instruction naming the failure. Deflecting is always the
+ * safe reply for a model, which is exactly why it needs catching in code
+ * rather than being hoped away in the prompt.
+ */
+export async function respondToScenario(input: {
+  userId: string;
+  sessionId: string;
+  scenario: Scenario;
+  history: Turn[];
+  userTurn: string;
+}) {
+  const { scenario } = input;
+  const counterpart = scenario.counterpart;
+
+  const system = `You are ${counterpart.name}, ${counterpart.role}. ${counterpart.instruction}
+
+You are a person in a conversation, not an assistant. You have your own view, your own stake in this, and your own things to say. You always reply with a single valid JSON object and nothing else.`;
+
+  const recentReplies = input.history
+    .filter((turn) => turn.speaker !== null)
+    .slice(-4)
+    .map((turn) => turn.content);
+
+  const build = (extra = "") => `SETTING: ${scenario.setting}
+
+TRANSCRIPT SO FAR:
+"""
+${transcriptOf(input.history, []).slice(-4000) || `(you have just said: "${scenario.openingLine}")`}
+"""
+
+THEY JUST SAID:
+"""
+${input.userTurn.slice(0, 3000)}
+"""
+
+Reply as ${counterpart.name}.
+
+Rules:
+- Say something of your own. React, disagree, add a detail, raise a concern, change your mind.
+- NEVER reply with only a question. NEVER say "tell me more", "that's interesting", "can you elaborate", or ask how something made them feel. A question is fine only after you have contributed something.
+- Do not repeat a point you have already made. Move the conversation somewhere new.
+- 2-3 sentences. Spoken, not written. Contractions, not formality.
+- Stay in character even if they say something odd.
+${extra}
+- "userTurn" is your assessment of what THEY just said:
+  isRebuttal = it directly responded to your last point.
+  introducesArgument = it moved things forward with something new.
+
+Return ONLY JSON:
+{"userTurn":{"isRebuttal":boolean,"introducesArgument":boolean},"replies":[{"speaker":"${counterpart.id}","content":string,"isRebuttal":boolean}]}`;
+
+  let result = await askGroq({
+    prompt: build(),
+    system,
+    userId: input.userId,
+    sessionId: input.sessionId,
+    operation: "scenario_turn",
+  });
+
+  const first = result.replies[0]?.content ?? "";
+
+  if (isDeflection(first) || isRepetitive(first, recentReplies)) {
+    console.warn("[scenario] counterpart deflected or repeated; re-asking once");
+    result = await askGroq({
+      prompt: build(
+        `- Your previous attempt was rejected because it ${isDeflection(first) ? "was a deflection with no content of your own" : "repeated something you already said"}. Say something genuinely new and take a position.`,
+      ),
+      system,
+      userId: input.userId,
+      sessionId: input.sessionId,
+      operation: "scenario_turn_retry",
+    });
+  }
+
+  // One retry only. A second failure ships the reply anyway rather than
+  // spending the user's rate limit chasing perfection mid-conversation.
+  return result;
 }
 
 /**
