@@ -55,12 +55,36 @@ export const env = {
     return optionalEnv("EMAIL_FROM") ?? "PrepPulse <onboarding@resend.dev>";
   },
 
-  /** Public origin, used for auth callbacks and magic-link URLs. */
+  /**
+   * Public origin, used for OAuth callbacks, magic-link URLs and the CSRF
+   * origin check.
+   *
+   * Vercel's own URL wins over a localhost override. Copying a whole .env into
+   * Vercel is the obvious way to configure a deployment, and it silently ships
+   * `BETTER_AUTH_URL=http://localhost:3000` — which then tells Google to send
+   * users back to the developer's laptop. Google reports it as a redirect_uri
+   * mismatch, which points at the OAuth console rather than the real cause.
+   *
+   * A localhost value is never correct on a deployed host, so we ignore it
+   * there rather than honouring an obviously wrong setting.
+   */
   get appUrl() {
     const explicit = optionalEnv("BETTER_AUTH_URL") ?? optionalEnv("NEXT_PUBLIC_APP_URL");
-    if (explicit) return explicit.replace(/\/$/, "");
-    // Vercel injects this on every deployment, including previews.
+    // Vercel injects these on every deployment, including previews.
     const vercel = optionalEnv("VERCEL_PROJECT_PRODUCTION_URL") ?? optionalEnv("VERCEL_URL");
+
+    if (explicit) {
+      const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i.test(explicit);
+      if (isLocal && vercel) {
+        console.warn(
+          `[env] BETTER_AUTH_URL points at localhost but this is a Vercel deployment. ` +
+            `Using https://${vercel} instead. Set BETTER_AUTH_URL to your real domain.`,
+        );
+        return `https://${vercel}`;
+      }
+      return explicit.replace(/\/$/, "");
+    }
+
     if (vercel) return `https://${vercel}`;
     return "http://localhost:3000";
   },
