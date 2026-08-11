@@ -1,14 +1,22 @@
 "use client";
 
-import { ArrowLeft, KeyRound, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, KeyRound, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import { authClient, signIn } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 type Method = "password" | "code";
 type Notice = { tone: "error" | "info"; text: string } | null;
+
+const field = cn(
+  "w-full rounded-[var(--radius-xs)] border border-line bg-black/25 px-4 py-3.5",
+  "text-[15px] text-ink outline-none transition-colors",
+  "placeholder:text-ink-4 focus:border-accent",
+);
 
 export function SignInForm({
   googleEnabled,
@@ -40,37 +48,35 @@ export function SignInForm({
   }
 
   return (
-    <div className="mt-8">
+    <Surface material="dense" radius="lg" className="p-7 sm:p-8">
       {googleEnabled ? (
-        <button
-          type="button"
+        <Button
+          variant="glass"
+          size="lg"
+          className="w-full"
+          loading={googleBusy}
           onClick={handleGoogle}
-          disabled={googleBusy}
-          className="pressable card flex w-full items-center justify-center gap-2.5 px-4 py-3 text-[15px] font-medium hover:bg-surface-2 disabled:opacity-60"
+          icon={<GoogleMark />}
         >
-          {googleBusy ? <Loader2 className="size-4 animate-spin" /> : <GoogleMark />}
           Continue with Google
-        </button>
+        </Button>
       ) : (
-        <p className="rounded-[var(--radius-xs)] border border-dashed border-line px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">
-          Google sign-in is off until <code className="font-mono">GOOGLE_CLIENT_ID</code> and{" "}
-          <code className="font-mono">GOOGLE_CLIENT_SECRET</code> are set. Everything below works now.
+        <p className="t-meta rounded-[var(--radius-xs)] border border-dashed border-line px-4 py-3 text-ink-4">
+          Google is off until <code className="font-mono">GOOGLE_CLIENT_ID</code> and{" "}
+          <code className="font-mono">GOOGLE_CLIENT_SECRET</code> are set. Everything below works
+          now.
         </p>
       )}
 
-      <div className="my-5 flex items-center gap-3 text-[12px] text-muted">
+      <div className="my-6 flex items-center gap-4">
         <span className="h-px flex-1 bg-line" />
-        or
+        <span className="t-micro">or</span>
         <span className="h-px flex-1 bg-line" />
       </div>
 
-      {/* Segmented control. Two methods, not four - a wall of equal-weight
-          buttons makes people choose instead of sign in. */}
-      <div
-        role="tablist"
-        aria-label="Sign-in method"
-        className="mb-5 grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1"
-      >
+      {/* Two methods, not four. A wall of equal-weight options makes people
+          choose instead of sign in. */}
+      <div role="tablist" aria-label="Sign-in method" className="mb-6 flex gap-6 border-b border-line">
         {(
           [
             ["password", "Password"],
@@ -87,13 +93,14 @@ export function SignInForm({
               setNotice(null);
             }}
             className={cn(
-              "pressable rounded-full px-3 py-2 text-[14px] font-medium transition-colors",
-              method === value
-                ? "bg-surface text-ink shadow-[var(--shadow-soft)]"
-                : "text-muted hover:text-ink-soft",
+              "pressable relative -mb-px pb-3 text-[14px] transition-colors",
+              method === value ? "text-ink" : "text-ink-4 hover:text-ink-2",
             )}
           >
             {label}
+            {method === value && (
+              <span className="absolute inset-x-0 bottom-0 h-px bg-accent shadow-[0_0_8px_var(--color-accent)]" />
+            )}
           </button>
         ))}
       </div>
@@ -108,18 +115,16 @@ export function SignInForm({
         <p
           role={notice.tone === "error" ? "alert" : "status"}
           className={cn(
-            "mt-3 text-[13.5px] leading-relaxed",
-            notice.tone === "error" ? "text-danger" : "text-ink-soft",
+            "t-meta mt-4",
+            notice.tone === "error" ? "text-[var(--color-critical)]" : "text-ink-2",
           )}
         >
           {notice.text}
         </p>
       )}
-    </div>
+    </Surface>
   );
 }
-
-/* ── Password ─────────────────────────────────────────────────────────── */
 
 function PasswordPanel({
   next,
@@ -170,15 +175,9 @@ function PasswordPanel({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2.5">
+    <form onSubmit={handleSubmit} className="space-y-3">
       {mode === "signup" && (
-        <input
-          name="name"
-          type="text"
-          autoComplete="name"
-          placeholder="Your name (optional)"
-          className={fieldClass}
-        />
+        <input name="name" type="text" autoComplete="name" placeholder="Your name (optional)" className={field} />
       )}
 
       <input
@@ -187,7 +186,7 @@ function PasswordPanel({
         required
         autoComplete="email"
         placeholder="you@example.com"
-        className={fieldClass}
+        className={field}
       />
 
       <input
@@ -197,28 +196,21 @@ function PasswordPanel({
         minLength={mode === "signup" ? 8 : undefined}
         autoComplete={mode === "signin" ? "current-password" : "new-password"}
         placeholder={mode === "signin" ? "Password" : "Password (8+ characters)"}
-        className={fieldClass}
+        className={field}
       />
 
-      <button type="submit" disabled={busy} className={primaryButtonClass}>
-        {busy && <Loader2 className="size-4 animate-spin" />}
-        {busy
-          ? mode === "signin"
-            ? "Signing in..."
-            : "Creating account..."
-          : mode === "signin"
-            ? "Sign in"
-            : "Create account"}
-      </button>
+      <Button type="submit" variant="primary" size="lg" className="w-full" loading={busy}>
+        {mode === "signin" ? "Sign in" : "Create account"}
+      </Button>
 
-      <div className="flex items-center justify-between pt-1 text-[13px]">
+      <div className="flex items-center justify-between pt-2">
         <button
           type="button"
           onClick={() => {
             setMode(mode === "signin" ? "signup" : "signin");
             setNotice(null);
           }}
-          className="pressable text-accent hover:underline"
+          className="pressable text-[13px] text-accent hover:underline"
         >
           {mode === "signin" ? "Create an account" : "I already have an account"}
         </button>
@@ -230,10 +222,10 @@ function PasswordPanel({
               onUseCode();
               setNotice({
                 tone: "info",
-                text: "No password needed - we'll email you a code that signs you in.",
+                text: "No password needed — we'll email a code that signs you in.",
               });
             }}
-            className="pressable text-muted hover:text-ink-soft"
+            className="pressable text-[13px] text-ink-4 hover:text-ink-2"
           >
             Forgot password?
           </button>
@@ -242,8 +234,6 @@ function PasswordPanel({
     </form>
   );
 }
-
-/* ── Email code (OTP) ─────────────────────────────────────────────────── */
 
 function CodePanel({
   next,
@@ -271,7 +261,6 @@ function CodePanel({
         type: "sign-in",
       });
       setBusy(false);
-
       if (error) {
         setNotice({ tone: "error", text: error.message ?? "We couldn't send that code." });
         return false;
@@ -307,12 +296,11 @@ function CodePanel({
         setNotice({
           tone: "error",
           text: /invalid|incorrect/i.test(error.message ?? "")
-            ? "That code isn't right. You get three tries before it's cancelled."
+            ? "That code isn't right. Three tries before it's cancelled."
             : (error.message ?? "We couldn't verify that code."),
         });
         return;
       }
-
       router.push(next);
       router.refresh();
     } catch {
@@ -323,13 +311,11 @@ function CodePanel({
 
   if (step === "code") {
     return (
-      <form onSubmit={handleVerify} className="space-y-2.5">
-        <div className="flex items-center gap-2 text-[13.5px] text-ink-soft">
-          <Mail className="size-4 shrink-0 text-accent" />
-          <span>
-            Code sent to <span className="font-medium text-ink">{email}</span>
-          </span>
-        </div>
+      <form onSubmit={handleVerify} className="space-y-3">
+        <p className="t-meta flex items-center gap-2 text-ink-2">
+          <Mail className="size-3.5 shrink-0 text-accent" />
+          Sent to <span className="text-ink">{email}</span>
+        </p>
 
         <label htmlFor="otp" className="sr-only">
           Six-digit code
@@ -342,18 +328,21 @@ function CodePanel({
           autoComplete="one-time-code"
           placeholder="000000"
           autoFocus
-          className={cn(
-            fieldClass,
-            "text-center font-mono text-[26px] tracking-[0.32em] tabular-nums",
-          )}
+          className={cn(field, "t-numeric text-center text-[30px] tracking-[0.34em]")}
         />
 
-        <button type="submit" disabled={busy || code.length < 6} className={primaryButtonClass}>
-          {busy && <Loader2 className="size-4 animate-spin" />}
-          {busy ? "Checking..." : "Verify and sign in"}
-        </button>
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          loading={busy}
+          disabled={code.length < 6}
+        >
+          Verify and sign in
+        </Button>
 
-        <div className="flex items-center justify-between pt-1 text-[13px]">
+        <div className="flex items-center justify-between pt-2">
           <button
             type="button"
             onClick={() => {
@@ -361,7 +350,7 @@ function CodePanel({
               setCode("");
               setNotice(null);
             }}
-            className="pressable inline-flex items-center gap-1 text-muted hover:text-ink-soft"
+            className="pressable inline-flex items-center gap-1.5 text-[13px] text-ink-4 hover:text-ink-2"
           >
             <ArrowLeft className="size-3.5" />
             Change email
@@ -375,18 +364,18 @@ function CodePanel({
                 setNotice({ tone: "info", text: "New code sent. The previous one no longer works." });
               }
             }}
-            className="pressable text-accent hover:underline disabled:opacity-50"
+            className="pressable text-[13px] text-accent hover:underline disabled:opacity-50"
           >
-            Resend code
+            Resend
           </button>
         </div>
 
         {isDev && (
-          <p className="mt-3 rounded-[var(--radius-xs)] bg-surface-2 px-3 py-2.5 text-[13px] leading-relaxed text-ink-soft">
-            <span className="font-medium text-ink">Dev note:</span>{" "}
+          <p className="t-meta mt-3 rounded-[var(--radius-xs)] border border-line px-3.5 py-3 text-ink-3">
+            <span className="text-ink">Dev:</span>{" "}
             {emailEnabled
-              ? "if your provider rejects the address, the code is printed in the terminal running "
-              : "no email provider is configured, so the code was printed in the terminal running "}
+              ? "if the provider rejects the address, the code is printed in the terminal running "
+              : "no email provider configured, so the code went to the terminal running "}
             <code className="font-mono">npm run dev</code>.
           </p>
         )}
@@ -395,7 +384,7 @@ function CodePanel({
   }
 
   return (
-    <form onSubmit={handleRequest} className="space-y-2.5">
+    <form onSubmit={handleRequest} className="space-y-3">
       <label htmlFor="code-email" className="sr-only">
         Email address
       </label>
@@ -407,28 +396,26 @@ function CodePanel({
         placeholder="you@example.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className={fieldClass}
+        className={field}
       />
 
-      <button type="submit" disabled={busy} className={primaryButtonClass}>
-        {busy ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
-        {busy ? "Sending code..." : "Email me a 6-digit code"}
-      </button>
+      <Button
+        type="submit"
+        variant="primary"
+        size="lg"
+        className="w-full"
+        loading={busy}
+        icon={<KeyRound className="size-4" />}
+      >
+        Email me a 6-digit code
+      </Button>
 
-      <p className="pt-1 text-[12.5px] leading-relaxed text-muted">
-        No password needed. We&apos;ll create your account if you don&apos;t have one yet.
+      <p className="t-meta pt-1 text-ink-4">
+        No password needed. We&apos;ll create your account if you don&apos;t have one.
       </p>
     </form>
   );
 }
-
-/* ── Shared bits ──────────────────────────────────────────────────────── */
-
-const fieldClass =
-  "w-full rounded-[var(--radius-xs)] border border-line bg-surface px-3.5 py-3 text-[15px] outline-none placeholder:text-muted focus:border-accent";
-
-const primaryButtonClass =
-  "pressable flex w-full items-center justify-center gap-2 rounded-[var(--radius-xs)] bg-accent px-4 py-3 text-[15px] font-medium text-accent-ink hover:brightness-110 disabled:opacity-60";
 
 function friendlyAuthError(error: { message?: string; code?: string }, mode: "signin" | "signup") {
   const raw = error.message ?? "";
@@ -456,10 +443,7 @@ function GoogleMark() {
         fill="#34A853"
         d="M12 24c3.24 0 5.96-1.08 7.94-2.91l-3.87-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.28v3.09A12 12 0 0 0 12 24Z"
       />
-      <path
-        fill="#FBBC05"
-        d="M5.27 14.29a7.2 7.2 0 0 1 0-4.58V6.62H1.28a12 12 0 0 0 0 10.76l3.99-3.09Z"
-      />
+      <path fill="#FBBC05" d="M5.27 14.29a7.2 7.2 0 0 1 0-4.58V6.62H1.28a12 12 0 0 0 0 10.76l3.99-3.09Z" />
       <path
         fill="#EA4335"
         d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0A12 12 0 0 0 1.28 6.62l3.99 3.09C6.22 6.86 8.87 4.75 12 4.75Z"
