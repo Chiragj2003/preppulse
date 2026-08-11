@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
-import { Surface } from "@/components/ui/surface";
+import { Button } from "@/components/ui/button";
 import { getProfile } from "@/lib/practice";
 import { requireUser } from "@/lib/session";
+import { ResumeUpload } from "./resume-upload";
 import { SkillsForm } from "./skills-form";
 
 export const metadata: Metadata = { title: "Interview prep" };
@@ -15,6 +17,7 @@ export const metadata: Metadata = { title: "Interview prep" };
 export default async function InterviewPrepPage() {
   const user = await requireUser("/interview-prep");
   const profile = await getProfile(user.id);
+  const ready = Boolean(profile?.skillsDescription || profile?.resumeExtractedData);
 
   return (
     <div className="mx-auto max-w-3xl px-5 pt-28 pb-24 sm:px-6">
@@ -36,17 +39,28 @@ export default async function InterviewPrepPage() {
 
       <section className="rise mt-14 [animation-delay:140ms]">
         <p className="t-micro mb-5">Or upload a resume</p>
-        <Surface material="liquid" radius="md" className="p-7 opacity-60">
-          <div className="flex items-baseline justify-between gap-6">
-            <p className="t-heading">PDF resume parsing</p>
-            <span className="t-micro shrink-0">Phase 3</span>
-          </div>
-          <p className="t-body mt-3 max-w-xl text-ink-3">
-            Gemini reads the PDF, extracts skills, experience and projects, and recommends the
-            interview type. Only the extracted JSON is stored — the file itself is never kept.
-          </p>
-        </Surface>
+        <ResumeUpload existing={profile?.resumeExtractedData ?? null} />
       </section>
+
+      {ready && (
+        <section className="rise mt-16 border-t border-line pt-10 [animation-delay:200ms]">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <div className="max-w-lg">
+              <p className="t-micro mb-4">Ready</p>
+              <h2 className="t-heading">Run a mock round</h2>
+              <p className="t-body mt-2 text-ink-3">
+                Pick an interviewer and how many questions. They&apos;re written for you before you
+                start.
+              </p>
+            </div>
+            <Link href="/interview" className="shrink-0">
+              <Button variant="primary" size="lg">
+                Start a mock interview
+              </Button>
+            </Link>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

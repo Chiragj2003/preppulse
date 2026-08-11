@@ -1,0 +1,45 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+
+import { InterviewRoom } from "@/components/interview-room";
+import { requireUser } from "@/lib/session";
+import type { InterviewerPersona } from "@/lib/types";
+import { getInterview } from "../actions";
+
+export const metadata: Metadata = { title: "Interview" };
+
+export default async function InterviewRoomPage({
+  params,
+}: {
+  params: Promise<{ sessionId: string }>;
+}) {
+  const { sessionId } = await params;
+  const user = await requireUser(`/interview/${sessionId}`);
+
+  const { session, questions, answers } = await getInterview(sessionId, user.id);
+
+  if (session.status === "completed") redirect(`/interview/${sessionId}/report`);
+
+  // Latest attempt per question — the room only needs to know what's answered.
+  const answered = new Map<string, { overallScore: number }>();
+  for (const answer of answers) {
+    if (!answered.has(answer.questionId)) {
+      answered.set(answer.questionId, { overallScore: answer.overallScore });
+    }
+  }
+
+  return (
+    <InterviewRoom
+      sessionId={session.id}
+      role={session.config?.role ?? session.promptSnapshot ?? "the role"}
+      persona={(session.config?.persona ?? "professional") as InterviewerPersona}
+      questions={questions.map((q) => ({
+        id: q.id,
+        position: q.position,
+        question: q.question,
+        kind: q.kind,
+        answeredScore: answered.get(q.id)?.overallScore ?? null,
+      }))}
+    />
+  );
+}
