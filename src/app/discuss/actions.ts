@@ -12,7 +12,8 @@ import { scenarioById } from "@/lib/scenarios";
 import { AppError, toAppError, type AppErrorCode } from "@/lib/errors";
 import { gateOrRedirect } from "@/lib/gate";
 import { computeGdMetrics, countWordsIn, GD_PERSONAS, nextStage, type DebateStage } from "@/lib/gd-metrics";
-import { getRandomTopic, getTopicById, recordPractice } from "@/lib/practice";
+import { getRandomTopic, getTopicById, getProfile, recordPractice } from "@/lib/practice";
+import { scoreRoleplay } from "@/lib/roleplay-scoring";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { tokensForScore } from "@/lib/scoring";
 import { requireUserApi } from "@/lib/session";
@@ -49,6 +50,8 @@ export async function startDiscussion(formData: FormData) {
   const topic = input.topicId ? await getTopicById(input.topicId) : await getRandomTopic();
   if (!topic) throw new AppError("not_found", "No topics are seeded yet.");
 
+  const profile = await getProfile(user.id);
+
   const [session] = await db
     .insert(practiceSessions)
     .values({
@@ -56,6 +59,7 @@ export async function startDiscussion(formData: FormData) {
       topicId: topic.id,
       mode: input.mode,
       status: "in_progress",
+      language: profile?.preferredLanguage ?? "en",
       promptSnapshot: topic.promptText,
       config: {
         personaIds: GD_PERSONAS.map((p) => p.id),
@@ -128,6 +132,7 @@ export async function speak(
           scenario: scenario!,
           history: history.map((t) => ({ speaker: t.speaker, content: t.content })),
           userTurn: input.content,
+          language: session.language,
         })
       : isDebate
       ? await respondToDebate({
@@ -138,6 +143,7 @@ export async function speak(
           stage,
           history: history.map((t) => ({ speaker: t.speaker, content: t.content })),
           userTurn: input.content,
+          language: session.language,
         })
       : await respondToDiscussion({
           userId: user.id,
@@ -146,6 +152,7 @@ export async function speak(
           history: history.map((t) => ({ speaker: t.speaker, content: t.content })),
           userTurn: input.content,
           personaIds: session.config?.personaIds ?? GD_PERSONAS.map((p) => p.id),
+          language: session.language,
         });
 
     let position = history.length;
@@ -242,6 +249,33 @@ export async function finishDiscussion(sessionId: string): Promise<Result<{ shar
       })),
     );
 
+    const isRolePlay = session.mode === "scenario" || session.mode === "conversation";
+    const userTurnCount = turns.filter((t) => t.speaker === null).length;
+
+    let score = metrics.speakingSharePct;
+
+    if (isRolePlay) {
+      const scenario = scenarioById(session.config?.scenarioId ?? "");
+      const criteria = scenario?.successLooksLike ?? [];
+      const userArgs = turns.filter((t) => t.speaker === null && t.role === "candidate_argument").length;
+      const userRebuttals = turns.filter((t) => t.speaker === null && t.isRebuttal).length;
+
+      // Evaluate criteria heuristically from turn metrics without LLM I/O
+      const criteriaResults = criteria.map((_, i) => {
+        if (i === 0) return userTurnCount >= 1;
+        if (i === 1) return userArgs > 0 || userRebuttals > 0 || userTurnCount >= 2;
+        return userTurnCount >= 3;
+      });
+
+      const roleplayScore = scoreRoleplay({
+        criteriaResults,
+        turnCount: turns.length,
+        userTurnCount,
+      });
+
+      score = roleplayScore.overallScore;
+    }
+
     await db
       .update(practiceSessions)
       .set({ status: "completed", completedAt: new Date() })
@@ -250,11 +284,11 @@ export async function finishDiscussion(sessionId: string): Promise<Result<{ shar
     await recordPractice(
       user.id,
       new Date().toLocaleDateString("en-CA"),
-      tokensForScore(metrics.speakingSharePct),
+      tokensForScore(score),
     );
 
     revalidatePath("/dashboard");
-    return { ok: true, data: { share: metrics.speakingSharePct } };
+    return { ok: true, data: { share: score } };
   } catch (error) {
     return fail(error, "finishDiscussion");
   }

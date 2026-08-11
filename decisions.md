@@ -729,19 +729,46 @@ worse than an obviously rough one.
 
 ---
 
+# Polish & Language (Phases 9–11)
+
+## D61. MediaPipe is dropped from scope
+
+**Decision.** Video/camera tracking is dropped. PrepPulse is a speech-first practice tool.
+
+**Why.** Speech clarity, pacing, filler control and argument structure are what the tool evaluates. Video processing adds client bundle overhead without contributing to the core communication thesis. Zero references exist in the codebase.
+
+## D62. Language support parameterises AI prompts, preserving English shell UI
+
+**Decision.** Language preference (`en`, `hinglish`, `hi`) is stored per profile and session. A `LANGUAGE_NOTE` is appended to LLM system prompts. Static marketing/app navigation copy remains English.
+
+**Why.** PrepPulse's shell voice is English, while the practice and coaching content adapts to the candidate's chosen medium (Hinglish/Hindi).
+
+## D63. UI strings externalised via a thin record-lookup
+
+**Decision.** `lib/strings.ts` provides a `t(key, lang)` function over a flat record. Fallback to English is guaranteed.
+
+**Why.** Heavy i18n frameworks bring unnecessary bundle weight and locale negotiation logic. A typed lookup function requires zero runtime dependencies.
+
+## D64. Role-play scoring is pure math over turn metrics
+
+**Decision.** `scoreRoleplay` in `lib/roleplay-scoring.ts` calculates `criteriaHitRate`, `participationScore` (40%-60% target ratio), and `engagementScore` with zero LLM calls.
+
+**Why.** Counting turns and evaluating participation ratios are deterministic facts. Only judgements go to a model; arithmetic stays in pure TypeScript.
+
+## D65. Multi-tiered caching for topic briefs
+
+**Decision.** `getTopicBrief` checks Redis (`brief:${id}`), then Postgres (`cachedBrief` column), generates via Groq if missing, and writes back to both. Failures degrade to `null`.
+
+**Why.** Repeated brief generation wastes API tokens. Storing in Postgres guarantees persistence even if Redis cache expires or is omitted.
+
+---
+
 # Open items
 
 - `requireEmailVerification` is off while email delivery is unreliable. Marked
   with a `ponytail:` comment in `lib/auth.ts`. Turn on once a sending domain is
   verified.
-- Upstash is not configured, so the leaderboard currently runs its Postgres
-  path. Adding `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` switches
-  it over with no code change.
-- Cached topic briefs have a Redis helper (`getCached`/`setCached`) but nothing
-  populates them yet — the brief generator is a Phase 10 polish item.
-- Role-play sessions record turns but aren't scored against their
-  `successLooksLike` criteria yet. The criteria are defined and displayed; the
-  end-of-session verdict is a Phase 10 item.
+- Upstash Redis is optional. `lib/redis.ts` degrades gracefully to Postgres when credentials are omitted.
 - `ADMIN_EMAILS` must be set on Vercel as well as locally, or `/admin` 404s in
   production.
 - The Turbopack dev CSS parser warns about `@layer properties;` in Tailwind's

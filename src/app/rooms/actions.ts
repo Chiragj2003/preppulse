@@ -8,6 +8,7 @@ import { discussionTurns, practiceSessions } from "@/db/schema";
 import { AppError } from "@/lib/errors";
 import { gateOrRedirect } from "@/lib/gate";
 import { countWordsIn } from "@/lib/gd-metrics";
+import { getProfile } from "@/lib/practice";
 import { scenarioById } from "@/lib/scenarios";
 import { requireUserApi } from "@/lib/session";
 
@@ -29,12 +30,15 @@ export async function startScenario(formData: FormData) {
 
   await gateOrRedirect(user.id, scenario.kind);
 
+  const profile = await getProfile(user.id);
+
   const [session] = await db
     .insert(practiceSessions)
     .values({
       userId: user.id,
       mode: scenario.kind,
       status: "in_progress",
+      language: profile?.preferredLanguage ?? "en",
       promptSnapshot: scenario.title,
       config: { scenarioId: scenario.id },
     })

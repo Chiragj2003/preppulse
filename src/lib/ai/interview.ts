@@ -6,10 +6,18 @@ import { clamp } from "@/lib/scoring";
 import type {
   AnswerScores,
   InterviewerPersona,
+  Language,
   QuestionKind,
   ResumeExtract,
 } from "@/lib/types";
 import { callGemini, type GeminiPart } from "./gemini";
+
+const LANGUAGE_NOTE: Record<Language, string> = {
+  en: "Reply in English.",
+  hinglish:
+    "The candidate may answer in Hinglish (Hindi-English mix). Judge on communication, not language purity. Reply in Hinglish.",
+  hi: "The candidate may answer in Hindi. Reply in Hindi.",
+};
 
 /* ── Resume extraction ──────────────────────────────────────────────────── */
 
@@ -126,6 +134,7 @@ export async function generateQuestions(input: {
   count: number;
   role: string;
   background: string;
+  language?: Language;
 }) {
   const result = await callGemini({
     parts: [
@@ -148,6 +157,8 @@ Rules:
 - One question each. No multi-part questions with "and also".
 - Never ask "tell me about yourself" — it is the one question everyone has already rehearsed.
 - "rationale" is one short line on why this question is worth asking THIS candidate.
+
+${LANGUAGE_NOTE[input.language ?? "en"]}
 
 Return ONLY JSON:
 {"questions":[{"question":string,"kind":"behavioural"|"technical"|"situational"|"motivational","rationale":string}]}`,
@@ -197,6 +208,7 @@ export async function analyseAnswer(input: {
   transcript: string;
   persona: InterviewerPersona;
   role: string;
+  language?: Language;
 }) {
   const words = input.transcript.trim().split(/\s+/).filter(Boolean).length;
   if (words < 10) {
@@ -234,6 +246,8 @@ Then write:
 - strengths: 1-3 specific things they did well. Quote their words where you can.
 - improvements: 1-3 concrete fixes. What to do differently, not just what was wrong.
 - idealAnswer: a model answer to this question, written in first person as if the candidate gave it. ${star} Use their real background where the transcript gives you something to work with, and keep it to a spoken length — around 150 words.
+
+${LANGUAGE_NOTE[input.language ?? "en"]}
 
 Return ONLY JSON:
 {"content":number,"clarity":number,"relevance":number,"structure":number,"feedback":string,"strengths":string[],"improvements":string[],"idealAnswer":string}`,

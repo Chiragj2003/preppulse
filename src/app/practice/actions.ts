@@ -13,6 +13,7 @@ import {
   createPracticeSession,
   getDailyTopic,
   getOwnedSession,
+  getProfile,
   getRandomTopic,
   getTopicById,
   recordPractice,
@@ -64,10 +65,13 @@ export async function startSession(formData: FormData) {
     throw new Error("No topics are seeded yet. Run `npm run db:seed`.");
   }
 
+  const profile = await getProfile(user.id);
+
   const session = await createPracticeSession({
     userId: user.id,
     topicId: topic.id,
     promptText: topic.promptText,
+    language: profile?.preferredLanguage ?? "en",
   });
 
   redirect(`/practice/${session.id}?prep=${quick ? 0 : 30}&speak=${quick ? 60 : 120}`);

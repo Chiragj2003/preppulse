@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getSession } from "@/lib/session";
+import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
 /**
@@ -28,7 +29,7 @@ export async function SiteHeader() {
           </span>
         </Link>
 
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-1.5">
           {session?.user ? (
             <>
               <Link
@@ -49,6 +50,7 @@ export async function SiteHeader() {
               >
                 Dashboard
               </Link>
+              <ThemeToggle />
               <UserMenu
                 name={session.user.name}
                 email={session.user.email}
@@ -56,12 +58,15 @@ export async function SiteHeader() {
               />
             </>
           ) : (
-            <Link
-              href="/sign-in"
-              className="pressable rounded-full bg-ink px-5 py-2.5 text-[14px] font-medium text-void hover:brightness-95"
-            >
-              Sign in
-            </Link>
+            <>
+              <ThemeToggle />
+              <Link
+                href="/sign-in"
+                className="pressable rounded-full bg-ink px-5 py-2.5 text-[14px] font-medium text-void hover:brightness-95"
+              >
+                Sign in
+              </Link>
+            </>
           )}
         </nav>
       </div>

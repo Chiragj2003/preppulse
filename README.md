@@ -24,9 +24,34 @@ for an interview this week.
 | 6 | Monetization scaffold | Done |
 | 7 | Conversation & real-world scenario modes | Done |
 | 8 | Admin & cost tracking | Done |
-| 9 | Hinglish / Hindi language support | Groundwork in place (schema + prompt hooks) |
-| 10 | Polish pass | Not started |
-| 11 | Portfolio polish | Not started |
+| 9 | Hinglish / Hindi language support | Done |
+| 10 | Polish pass — Core Web Vitals, roleplay scoring, topic brief cache | Done |
+| 11 | Portfolio polish — architecture diagrams, demo seed | Done |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    User([User Browser]) --> UI[Next.js App Router]
+    UI --> Auth[Better Auth: Google / Magic Link]
+    UI --> Actions[Server Actions & API Routes]
+    
+    subgraph Data Layer
+        Actions --> DB[(Neon Serverless Postgres)]
+        Actions --> Redis[(Upstash Redis Cache)]
+    end
+    
+    subgraph AI Routing Layer
+        Actions --> Math[Pure Math Engine: lib/*.ts]
+        Actions --> Groq[Groq Llama 3.3: Extempore / GD / Debate]
+        Actions --> Gemini[Gemini 2.5/3: Resume Parsing / Interview]
+    end
+    
+    Groq --> Usage[ai_usage Cost & Rate Tracking]
+    Gemini --> Usage
+```
 
 ---
 

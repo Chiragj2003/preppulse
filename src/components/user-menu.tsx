@@ -49,6 +49,12 @@ export function UserMenu({
             <p className="t-body truncate font-medium">{label}</p>
             <p className="t-meta truncate text-ink-4">{email}</p>
           </div>
+          <a
+            href="/settings"
+            className="pressable block w-full rounded-[var(--radius-xs)] px-3 py-2.5 text-left text-[13.5px] text-ink-2 hover:bg-white/5 hover:text-ink"
+          >
+            Settings
+          </a>
           <button
             type="button"
             onClick={handleSignOut}

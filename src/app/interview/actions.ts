@@ -137,6 +137,8 @@ export async function startInterview(formData: FormData) {
         .join("\n")
     : (written ?? "");
 
+  const preferredLanguage = profile?.preferredLanguage ?? "en";
+
   const [session] = await db
     .insert(practiceSessions)
     .values({
@@ -144,6 +146,7 @@ export async function startInterview(formData: FormData) {
       mode: "interview",
       status: "in_progress",
       promptSnapshot: role,
+      language: preferredLanguage,
       config: { persona: input.persona, questionCount: input.questionCount, role },
     })
     .returning();
@@ -155,6 +158,7 @@ export async function startInterview(formData: FormData) {
     count: input.questionCount,
     role,
     background,
+    language: preferredLanguage,
   });
 
   await db
@@ -231,6 +235,7 @@ export async function submitAnswer(
       transcript: input.transcript,
       persona: (config.persona ?? "professional") as InterviewerPersona,
       role: config.role ?? session.promptSnapshot ?? "the role",
+      language: session.language,
     });
 
     // Attempts are append-only so the report can show a retry delta.

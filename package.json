@@ -9,12 +9,13 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/lib/scoring.test.ts && tsx src/lib/interview-scoring.test.ts && tsx src/lib/gd-metrics.test.ts && tsx src/lib/gamification.test.ts && tsx src/lib/billing.test.ts && tsx src/lib/scenarios.test.ts && tsx src/lib/cost.test.ts",
+    "test": "tsx src/lib/scoring.test.ts && tsx src/lib/interview-scoring.test.ts && tsx src/lib/gd-metrics.test.ts && tsx src/lib/gamification.test.ts && tsx src/lib/billing.test.ts && tsx src/lib/scenarios.test.ts && tsx src/lib/cost.test.ts && tsx src/lib/roleplay-scoring.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx --env-file=.env src/db/seed.ts",
+    "db:seed-demo": "tsx --env-file=.env src/db/seed-demo.ts",
     "auth:generate": "better-auth generate --config src/lib/auth.ts --output src/db/auth-schema.ts"
   },
   "dependencies": {

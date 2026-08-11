@@ -5,8 +5,15 @@ import { env } from "@/lib/env";
 import { GD_PERSONAS, MODERATOR, STAGE_BRIEF, type DebateStage } from "@/lib/gd-metrics";
 import { toAppError } from "@/lib/errors";
 import { isDeflection, isRepetitive, type Scenario } from "@/lib/scenarios";
-import type { DiscussionPersona } from "@/lib/types";
+import type { DiscussionPersona, Language } from "@/lib/types";
 import { recordUsage } from "./usage";
+
+const LANGUAGE_NOTE: Record<Language, string> = {
+  en: "Reply in English.",
+  hinglish:
+    "The candidate may mix Hindi and English (Hinglish). Match their register. Reply in Hinglish.",
+  hi: "The candidate may speak Hindi. Reply in Hindi.",
+};
 
 /**
  * Group discussion and debate run on Groq for the same reason Phase 2 does:
@@ -138,6 +145,7 @@ export async function respondToDiscussion(input: {
   userTurn: string;
   personaIds: string[];
   isOpening?: boolean;
+  language?: Language;
 }) {
   const personas = GD_PERSONAS.filter((p) => input.personaIds.includes(p.id));
   const cast = [...personas, MODERATOR];
@@ -178,6 +186,8 @@ Rules:
   isRebuttal = it directly answered a specific point someone made.
   introducesArgument = it added a new claim or angle not yet raised.
 
+${LANGUAGE_NOTE[input.language ?? "en"]}
+
 Return ONLY JSON:
 {"userTurn":{"isRebuttal":boolean,"introducesArgument":boolean},"replies":[{"speaker":"<persona id>","content":string,"isRebuttal":boolean}]}`;
 
@@ -209,6 +219,7 @@ export async function respondToScenario(input: {
   scenario: Scenario;
   history: Turn[];
   userTurn: string;
+  language?: Language;
 }) {
   const { scenario } = input;
   const counterpart = scenario.counterpart;
@@ -246,6 +257,8 @@ ${extra}
 - "userTurn" is your assessment of what THEY just said:
   isRebuttal = it directly responded to your last point.
   introducesArgument = it moved things forward with something new.
+
+${LANGUAGE_NOTE[input.language ?? "en"]}
 
 Return ONLY JSON:
 {"userTurn":{"isRebuttal":boolean,"introducesArgument":boolean},"replies":[{"speaker":"${counterpart.id}","content":string,"isRebuttal":boolean}]}`;
@@ -290,6 +303,7 @@ export async function respondToDebate(input: {
   stage: DebateStage;
   history: Turn[];
   userTurn: string;
+  language?: Language;
 }) {
   const opponentStance = input.userStance === "for" ? "against" : "for";
 
@@ -322,6 +336,8 @@ Rules:
 - "userTurn" is your assessment of what the CANDIDATE just said:
   isRebuttal = it directly answered a point you made.
   introducesArgument = it added a new claim not yet raised.
+
+${LANGUAGE_NOTE[input.language ?? "en"]}
 
 Return ONLY JSON:
 {"userTurn":{"isRebuttal":boolean,"introducesArgument":boolean},"replies":[{"speaker":"opponent","content":string,"isRebuttal":boolean}]}`;

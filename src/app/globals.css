@@ -109,6 +109,27 @@
     color-scheme: dark;
   }
 
+  html[data-theme="light"] {
+    color-scheme: light;
+    --color-void: oklch(97.5% 0.005 285);
+    --color-base: oklch(95% 0.006 285);
+    --color-raised: oklch(100% 0 0);
+    --color-elevated: oklch(98.5% 0.005 285);
+
+    --color-ink: oklch(16% 0.01 285);
+    --color-ink-2: oklch(36% 0.01 265);
+    --color-ink-3: oklch(52% 0.01 265);
+    --color-ink-4: oklch(66% 0.008 265);
+
+    --color-line: oklch(88% 0.008 285);
+    --color-line-bright: oklch(80% 0.01 285);
+
+    --shadow-flat: 0 1px 3px oklch(0% 0 0 / 0.06);
+    --shadow-near: 0 4px 14px oklch(0% 0 0 / 0.08), 0 1px 3px oklch(0% 0 0 / 0.04);
+    --shadow-lift: 0 10px 28px oklch(0% 0 0 / 0.12), 0 2px 6px oklch(0% 0 0 / 0.06);
+    --shadow-float: 0 16px 48px oklch(0% 0 0 / 0.16), 0 4px 12px oklch(0% 0 0 / 0.08);
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     scrollbar-color: var(--color-line-bright) transparent;
@@ -280,27 +301,43 @@
   /* CLEAR GLASS: floating controls and navigation. Barely there. */
   .m-clear {
     background: oklch(20% 0.008 285 / 0.42);
-    backdrop-filter: blur(var(--blur-clear)) saturate(150%);
+    backdrop-filter: blur(var(--blur-clear)) saturate(160%);
     box-shadow: var(--shadow-flat);
+  }
+  html[data-theme="light"] .m-clear {
+    background: oklch(100% 0 0 / 0.65);
+    backdrop-filter: blur(var(--blur-clear)) saturate(180%);
   }
 
   /* DENSE GLASS: important interactive surfaces. Reads as a real object. */
   .m-dense {
     background: oklch(21% 0.009 285 / 0.72);
-    backdrop-filter: blur(var(--blur-dense)) saturate(165%);
+    backdrop-filter: blur(var(--blur-dense)) saturate(175%);
     box-shadow: var(--shadow-near);
+  }
+  html[data-theme="light"] .m-dense {
+    background: oklch(100% 0 0 / 0.82);
+    backdrop-filter: blur(var(--blur-dense)) saturate(190%);
   }
 
   /* FROSTED GLASS: modals and sheets. Pushes their context away. */
   .m-frost {
     background: oklch(19% 0.008 285 / 0.86);
-    backdrop-filter: blur(var(--blur-frost)) saturate(180%);
+    backdrop-filter: blur(var(--blur-frost)) saturate(190%);
     box-shadow: var(--shadow-float);
+  }
+  html[data-theme="light"] .m-frost {
+    background: oklch(100% 0 0 / 0.92);
+    backdrop-filter: blur(var(--blur-frost)) saturate(200%);
   }
 
   /* DARK LIQUID: the main application surface. Opaque, quiet, holds content. */
   .m-liquid {
     background: linear-gradient(168deg, oklch(16.5% 0.008 285), oklch(13.8% 0.007 285) 65%);
+    box-shadow: var(--shadow-near);
+  }
+  html[data-theme="light"] .m-liquid {
+    background: linear-gradient(168deg, oklch(100% 0 0), oklch(97% 0.004 285) 65%);
     box-shadow: var(--shadow-near);
   }
 
