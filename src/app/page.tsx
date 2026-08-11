@@ -34,7 +34,7 @@ export default async function HomePage() {
           </span>
         </p>
 
-        <h1 className="t-hero rise max-w-[15ch] [animation-delay:60ms]">
+        <h1 className="t-display rise max-w-[15ch] [animation-delay:60ms]">
           Two minutes
           <br />
           <span className="text-ink-3">of talking</span>

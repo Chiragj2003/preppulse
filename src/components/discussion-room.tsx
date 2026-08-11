@@ -92,6 +92,22 @@ export function DiscussionRoom({
     endRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "end" });
   }, [turns.length, reduceMotion]);
 
+  const sendRef = useRef(send);
+  sendRef.current = send;
+
+  // Auto-send when the user stops talking for 2 seconds (ChatGPT voice mode style)
+  useEffect(() => {
+    if (typedMode || busy || done) return;
+    const text = `${speech.finalText} ${speech.interimText}`.trim();
+    if (!text) return;
+
+    const timeout = setTimeout(() => {
+      void sendRef.current();
+    }, 2000);
+
+    return () => clearTimeout(timeout);
+  }, [speech.interimText, speech.finalText, typedMode, busy, done]);
+
   async function send() {
     const content = typedMode ? draft.trim() : `${speech.finalText} ${speech.interimText}`.trim();
     if (!content || busy) return;

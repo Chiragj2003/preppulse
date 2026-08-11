@@ -18,6 +18,8 @@ export function useTTS() {
     
     const voices = window.speechSynthesis.getVoices();
     const voice =
+      voices.find((v) => v.name.includes("Microsoft Aria Online (Natural)")) ||
+      voices.find((v) => v.name.includes("Microsoft Jenny Online (Natural)")) ||
       voices.find((v) => v.name.includes("Google UK English Female")) ||
       voices.find((v) => v.name.includes("Google US English")) ||
       voices.find((v) => v.lang.startsWith("en-")) ||
