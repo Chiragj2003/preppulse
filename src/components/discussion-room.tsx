@@ -70,7 +70,7 @@ export function DiscussionRoom({
   const isDebate = mode === "debate";
   const isRolePlay = mode === "scenario" || mode === "conversation";
 
-  const sendRef = useRef<() => void>(() => {});
+  const sendRef = useRef<(spokenText?: string) => void>(() => {});
 
   // Advanced Voice Session Hook with low-latency VAD & auto-interrupt
   const voiceSession = useVoiceSession({
@@ -82,8 +82,10 @@ export function DiscussionRoom({
     language: language as "en" | "hinglish" | "hi",
     autoSave: true,
     onTurnComplete: (speaker, text) => {
-      if (speaker === null && text.trim() && !busy) {
-        void sendRef.current();
+      // Pass the text through. The recogniser has already been reset by this
+      // point, so `send()` cannot recover it on its own.
+      if (speaker === null && text.trim()) {
+        void sendRef.current(text);
       }
     },
     onInterrupted: () => {
@@ -103,16 +105,29 @@ export function DiscussionRoom({
 
   const presence = presenceVerdict(metrics.speakingSharePct, isDebate ? 2 : 5);
 
+  // The composer/voice dock is fixed to the bottom of the viewport, so
+  // scrolling a message to `block: "end"` parks it *behind* the dock and looks
+  // like the scroll stopped halfway. The sentinel carries a scroll margin the
+  // height of the dock, so the newest turn lands fully clear of it.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "end" });
+    endRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "end",
+    });
   }, [turns.length, reduceMotion]);
 
-  const send = useCallback(async () => {
-    const content = typedMode ? draft.trim() : voiceSession.transcript.trim();
-    if (!content || busy) return;
-
-    if (!typedMode) {
-      voiceSession.sendTurn(content, null, "candidate");
+  /**
+   * `spokenText` is passed in by the voice path, and that matters: `sendTurn`
+   * resets the recogniser before firing this callback, so re-reading
+   * `voiceSession.transcript` here would always find it empty and bail — which
+   * left the session stuck on "processing" with a live mic and no way out.
+   */
+  const send = useCallback(async (spokenText?: string) => {
+    const content = (spokenText ?? (typedMode ? draft : voiceSession.transcript)).trim();
+    if (!content || busy) {
+      // Nothing to send; make sure the floor goes back rather than hanging.
+      if (!typedMode) voiceSession.resumeListening();
+      return;
     }
 
     setBusy(true);
@@ -137,6 +152,7 @@ export function DiscussionRoom({
       setError(result.error.message);
       setTurns((prev) => prev.filter((t) => t.id !== optimistic.id));
       setDraft(content);
+      if (!typedMode) voiceSession.resumeListening();
       return;
     }
 
@@ -164,11 +180,17 @@ export function DiscussionRoom({
     if (result.data.stage) setStage(result.data.stage);
     if (result.data.finished) setDone(true);
 
-    // Speak AI replies using low latency voice response with interruptibility
-    if (!typedMode && result.data.replies.length > 0) {
-      const fullReply = result.data.replies.map((r) => r.content).join(" ");
-      const speakerId = result.data.replies[0]?.speaker || "ai";
-      voiceSession.speakResponse(fullReply, speakerId);
+    if (!typedMode) {
+      if (result.data.replies.length > 0) {
+        const fullReply = result.data.replies.map((r) => r.content).join(" ");
+        const speakerId = result.data.replies[0]?.speaker || "ai";
+        voiceSession.speakResponse(fullReply, speakerId);
+        // speakResponse drives status: speaking -> listening via TTS callbacks.
+      } else {
+        // No reply came back. Hand the floor straight back rather than waiting
+        // on a TTS "ended" event that will never fire.
+        voiceSession.resumeListening();
+      }
     }
   }, [typedMode, voiceSession, busy, draft, isDebate, stage, sessionId]);
 
@@ -297,7 +319,9 @@ export function DiscussionRoom({
           </p>
         )}
 
-        <div ref={endRef} />
+        {/* scroll-mb clears the fixed dock, so "scroll to newest" actually
+            lands the newest turn in view instead of underneath it. */}
+        <div ref={endRef} className="scroll-mb-56 h-px" />
       </div>
 
       {error && (

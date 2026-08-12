@@ -33,6 +33,7 @@ export function VoiceVisualizer({
   onStop,
 }: VoiceVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   // 60fps Canvas render loop for dynamic pulsing audio waves
@@ -116,6 +117,12 @@ export function VoiceVisualizer({
 
   const badge = getStatusBadge();
 
+  // Keep the newest words in view as they arrive, without moving the dock.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [transcript]);
+
   return (
     <div className={`w-full max-w-xl mx-auto ${className}`}>
       <Surface material="frost" radius="lg" className="p-4 sm:p-5 border border-line/80 shadow-[var(--shadow-float)] relative overflow-hidden backdrop-blur-xl">
@@ -191,15 +198,32 @@ export function VoiceVisualizer({
               transition={{ duration: 0.3 }}
               className="overflow-hidden"
             >
-              <div className="mt-3 pt-3 border-t border-line/40 text-left">
-                <p className="t-micro text-ink-4 mb-1">Live Words</p>
-                <p className="t-body text-ink text-sm sm:text-base leading-relaxed font-light">
+              {/* Vibrancy: text sitting over a frosted, blurred surface needs
+                  MORE weight and contrast than text on a solid one, not less.
+                  `font-light` here was the legibility bug — 300-weight strokes
+                  on blurred dark glass read as grey mush. Medium weight, full
+                  ink, and a touch of tracking. */}
+              <div className="mt-3 border-t border-line/40 pt-3 text-left">
+                <p className="t-micro mb-1.5">Live words</p>
+                {/* Capped and internally scrolled. This dock is anchored to the
+                    bottom of the viewport, so an uncapped transcript grows
+                    UPWARD and swallows the conversation behind it. Holding the
+                    dock at a fixed maximum keeps the room visible however long
+                    someone talks. */}
+                <div
+                  ref={scrollRef}
+                  className="max-h-[7.5rem] overflow-y-auto overscroll-contain pr-1"
+                >
                   {transcript ? (
-                    <span>{transcript}</span>
+                    <p className="text-[15px] leading-relaxed font-medium tracking-[0.005em] text-ink">
+                      {transcript}
+                    </p>
                   ) : (
-                    <span className="italic text-ink-4">Speak naturally — your words appear here in real-time.</span>
+                    <p className="text-[15px] leading-relaxed text-ink-3">
+                      Speak naturally — your words appear here as you go.
+                    </p>
                   )}
-                </p>
+                </div>
               </div>
             </motion.div>
           )}

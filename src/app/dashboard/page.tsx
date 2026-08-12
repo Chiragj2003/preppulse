@@ -67,30 +67,67 @@ export default async function DashboardPage() {
 
       {/* ── Today. The dominant object. ──────────────────────────────────── */}
       <section className="rise mt-8 [animation-delay:60ms]">
+        {/* Two different things, deliberately not merged:
+            the DAILY topic is once a day and is what carries the streak;
+            a PRACTICE ROLL is unlimited and carries nothing. Once today is
+            done, the card stops offering to redo the daily one — repeating it
+            cannot extend the streak, so "Practise again" here was telling the
+            user something untrue about what the button does. */}
         {topic ? (
           <Surface material="dense" radius="lg" refract className="overflow-hidden">
             <div className="p-8 sm:p-12">
               <p className="t-micro mb-7">
-                {doneToday ? "Done today — go again if you like" : "Today's topic"}
+                {doneToday ? (
+                  <>
+                    <span className="text-[var(--color-positive)]">Today is done</span>
+                    <span className="mx-3 text-ink-4">/</span>
+                    <span>streak secured</span>
+                  </>
+                ) : (
+                  "Today's topic"
+                )}
               </p>
 
-              <h1 className="t-display max-w-3xl">{topic.promptText}</h1>
+              <h1 className={`t-display max-w-3xl ${doneToday ? "text-ink-3" : ""}`}>
+                {topic.promptText}
+              </h1>
 
               <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-5">
-                <Link
-                  href="/practice"
-                  className="pressable group inline-flex h-[54px] items-center gap-3 rounded-full bg-accent pr-3 pl-7 text-[15.5px] font-medium text-void shadow-[var(--shadow-accent)] hover:brightness-110"
-                >
-                  {doneToday ? "Practise again" : "Start"}
-                  <span className="grid size-9 place-items-center rounded-full bg-void/15 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5">
-                    <ArrowUpRight className="size-4" />
-                  </span>
-                </Link>
+                {doneToday ? (
+                  <>
+                    <Link
+                      href="/practice?mode=quick"
+                      className="pressable group inline-flex h-[54px] items-center gap-3 rounded-full bg-accent pr-3 pl-7 text-[15.5px] font-medium text-void shadow-[var(--shadow-accent)] hover:brightness-110"
+                    >
+                      Roll a fresh topic
+                      <span className="grid size-9 place-items-center rounded-full bg-void/15 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5">
+                        <ArrowUpRight className="size-4" />
+                      </span>
+                    </Link>
 
-                <div className="flex items-center gap-6">
-                  <span className="t-micro">{topic.category}</span>
-                  <span className="t-micro">2:00</span>
-                </div>
+                    <p className="t-meta max-w-xs text-ink-4">
+                      Extra rolls are unlimited and don&apos;t affect your streak — today&apos;s
+                      already counted.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/practice"
+                      className="pressable group inline-flex h-[54px] items-center gap-3 rounded-full bg-accent pr-3 pl-7 text-[15.5px] font-medium text-void shadow-[var(--shadow-accent)] hover:brightness-110"
+                    >
+                      Start
+                      <span className="grid size-9 place-items-center rounded-full bg-void/15 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5">
+                        <ArrowUpRight className="size-4" />
+                      </span>
+                    </Link>
+
+                    <div className="flex items-center gap-6">
+                      <span className="t-micro">{topic.category}</span>
+                      <span className="t-micro">2:00</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </Surface>
