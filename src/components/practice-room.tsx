@@ -3,34 +3,48 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Keyboard, Mic, Square } from "lucide-react";
+import { ArrowLeft, Keyboard, Mic, Square, Sparkles } from "lucide-react";
 
 import { abandonSession, evaluateSession } from "@/app/practice/actions";
-import { useSpeech } from "@/lib/use-speech";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { Timer } from "@/components/ui/timer";
-import { Waveform } from "@/components/ui/waveform";
+import { VoiceVisualizer } from "@/components/VoiceVisualizer";
+import { useVoiceSession } from "@/lib/useVoiceSession";
 
 type Phase = "idle" | "prep" | "speaking" | "submitting" | "failed";
 
-/**
- * The performance environment.
- *
- * Everything that isn't the topic, the clock, the voice or the one control
- * you need is stripped out while speaking. Chrome dims, the page stops
- * competing, and what remains is a room to talk in.
- */
+function playChime(frequency = 880, durationMs = 120) {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + durationMs / 1000);
+    osc.start();
+    osc.stop(ctx.currentTime + durationMs / 1000);
+    osc.onended = () => ctx.close();
+  } catch {
+    /* AudioContext fallback */
+  }
+}
+
 export function PracticeRoom({
   sessionId,
   topic,
   prepSeconds,
   speakSeconds,
+  language = "en",
 }: {
   sessionId: string;
   topic: string;
   prepSeconds: number;
   speakSeconds: number;
+  language?: string;
 }) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
@@ -39,22 +53,37 @@ export function PracticeRoom({
   const [remaining, setRemaining] = useState(prepSeconds || speakSeconds);
   const [error, setError] = useState<string | null>(null);
   const [typedMode, setTypedMode] = useState(false);
+  const [graceCountdown, setGraceCountdown] = useState<number | null>(null);
 
-  const speech = useSpeech();
+  const voiceSession = useVoiceSession({
+    sessionId,
+    mode: "conversation",
+    topic,
+    language: language as "en" | "hinglish" | "hi",
+    autoSave: true,
+  });
+
   const startedAtRef = useRef(0);
 
-  /* One interval drives both phases; the phase decides what zero means. */
+  /* One interval drives both phases */
   useEffect(() => {
     if (phase !== "prep" && phase !== "speaking") return;
 
     const id = setInterval(() => {
       setRemaining((value) => {
-        if (value > 1) return value - 1;
+        if (value > 1) {
+          if (phase === "speaking" && value === 16) {
+            playChime(440, 200);
+          }
+          return value - 1;
+        }
         clearInterval(id);
         if (phase === "prep") {
+          playChime(880, 150);
           setPhase("speaking");
           return speakSeconds;
         }
+        setGraceCountdown(2);
         return 0;
       });
     }, 1000);
@@ -62,17 +91,35 @@ export function PracticeRoom({
     return () => clearInterval(id);
   }, [phase, speakSeconds]);
 
-  const { start: startMic, stop: stopMic } = speech;
+  // Grace period countdown
   useEffect(() => {
-    if (phase === "speaking" && !typedMode) startMic();
-    else stopMic();
-  }, [phase, typedMode, startMic, stopMic]);
+    if (graceCountdown === null || graceCountdown <= 0) return;
+
+    const id = setTimeout(() => {
+      setGraceCountdown((v) => {
+        if (v !== null && v <= 1) {
+          return 0;
+        }
+        return v !== null ? v - 1 : null;
+      });
+    }, 1000);
+
+    return () => clearTimeout(id);
+  }, [graceCountdown]);
+
+  useEffect(() => {
+    if (phase === "speaking" && !typedMode) {
+      void voiceSession.startSession();
+    } else if (phase !== "speaking") {
+      voiceSession.stopSession();
+    }
+  }, [phase, typedMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (phase === "speaking" && startedAtRef.current === 0) startedAtRef.current = Date.now();
   }, [phase]);
 
-  const transcript = typedMode ? speech.typed : `${speech.finalText} ${speech.interimText}`.trim();
+  const transcript = typedMode ? voiceSession.speech.typed : voiceSession.transcript;
 
   const submit = useCallback(async () => {
     const text = transcript.trim();
@@ -82,8 +129,10 @@ export function PracticeRoom({
       return;
     }
 
+    voiceSession.stopSession();
     setPhase("submitting");
     setError(null);
+    setGraceCountdown(null);
 
     const elapsed = startedAtRef.current
       ? Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
@@ -104,16 +153,16 @@ export function PracticeRoom({
 
     setError(result.error.message);
     setPhase("failed");
-  }, [router, sessionId, speakSeconds, transcript, typedMode]);
+  }, [router, sessionId, speakSeconds, transcript, typedMode, voiceSession]);
 
   useEffect(() => {
-    if (phase === "speaking" && remaining === 0) void submit();
-  }, [phase, remaining, submit]);
+    if (phase === "speaking" && graceCountdown === 0) void submit();
+  }, [phase, graceCountdown, submit]);
 
   async function leave() {
     const midAnswer = phase === "speaking" && transcript.trim().length > 0;
     if (midAnswer && !window.confirm("Leave now and this answer won't be scored. Sure?")) return;
-    stopMic();
+    voiceSession.stopSession();
     await abandonSession(sessionId);
     router.push("/dashboard");
   }
@@ -121,15 +170,15 @@ export function PracticeRoom({
   const speaking = phase === "speaking";
   const urgent = speaking && remaining <= 15;
   const total = phase === "prep" ? prepSeconds : speakSeconds;
+  const isInGrace = graceCountdown !== null && graceCountdown > 0;
 
   return (
     <div className="mx-auto min-h-dvh max-w-3xl px-5 pt-24 pb-16 sm:px-6">
-      {/* Chrome recedes while speaking rather than disappearing — a control
-          that vanishes is a control the user has to hunt for. */}
       <motion.div
         animate={{ opacity: speaking ? 0.35 : 1 }}
         whileHover={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
+        className="flex items-center justify-between"
       >
         <button
           type="button"
@@ -140,10 +189,14 @@ export function PracticeRoom({
           <ArrowLeft className="size-3.5" />
           Leave session
         </button>
+
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/10 border border-accent/30 text-accent text-xs font-medium">
+          <Sparkles className="size-3.5" />
+          <span>Real-time Audio Flow</span>
+        </span>
       </motion.div>
 
-      {/* Topic. Large while thinking, small once the clock is running — the
-          hierarchy follows what you actually need at that moment. */}
+      {/* Topic */}
       <motion.div
         animate={{ scale: speaking ? 0.82 : 1, opacity: speaking ? 0.55 : 1 }}
         transition={{ type: "spring", bounce: 0, duration: 0.6 }}
@@ -175,6 +228,7 @@ export function PracticeRoom({
               onClick={() => {
                 setPhase(prepSeconds > 0 ? "prep" : "speaking");
                 setRemaining(prepSeconds > 0 ? prepSeconds : speakSeconds);
+                if (prepSeconds === 0) playChime(880, 150);
               }}
             >
               Begin
@@ -191,24 +245,42 @@ export function PracticeRoom({
             className="flex w-full flex-col items-center"
           >
             <Timer
-              remaining={remaining}
-              total={total}
-              tone={phase === "prep" ? "neutral" : urgent ? "caution" : "accent"}
-              label={phase === "prep" ? "Thinking" : urgent ? "Start wrapping up" : "Listening"}
+              remaining={isInGrace ? graceCountdown : remaining}
+              total={isInGrace ? 2 : total}
+              tone={phase === "prep" ? "neutral" : isInGrace ? "caution" : urgent ? "caution" : "accent"}
+              label={
+                phase === "prep"
+                  ? "Thinking"
+                  : isInGrace
+                    ? "Wrapping up..."
+                    : urgent
+                      ? "Start wrapping up"
+                      : "Listening"
+              }
               className="size-[clamp(230px,58vw,300px)]"
             />
 
-            {/* Voice activity. Answers the only question that matters while
-                recording: is it hearing me? */}
             {speaking && !typedMode && (
-              <Waveform active className="mt-10 h-14 w-full max-w-md" />
+              <div className="mt-8 w-full max-w-md">
+                <VoiceVisualizer
+                  status={voiceSession.status}
+                  audioLevel={voiceSession.audioLevel}
+                  transcript={voiceSession.transcript}
+                  isMicActive={voiceSession.isMicActive}
+                  isSpeaking={voiceSession.isSpeaking}
+                  counterpartName="PrepPulse AI"
+                  onInterrupt={voiceSession.interrupt}
+                  onStop={() => void submit()}
+                />
+              </div>
             )}
 
-            <div className="mt-10 flex items-center gap-3">
+            <div className="mt-8 flex items-center gap-3">
               {phase === "prep" ? (
                 <Button
                   variant="glass"
                   onClick={() => {
+                    playChime(880, 150);
                     setPhase("speaking");
                     setRemaining(speakSeconds);
                   }}
@@ -245,7 +317,6 @@ export function PracticeRoom({
         )}
       </div>
 
-      {/* Transcript */}
       {(speaking || phase === "failed" || typedMode) && (
         <motion.section
           initial={reduceMotion ? false : { opacity: 0 }}
@@ -255,28 +326,21 @@ export function PracticeRoom({
         >
           <div className="mb-4 flex items-baseline justify-between">
             <p className="t-micro">{typedMode ? "Your answer" : "Transcript"}</p>
-            {!speech.supported && !typedMode && (
-              <p className="t-meta text-[var(--color-caution)]">Speech recognition unavailable</p>
-            )}
           </div>
 
           {typedMode ? (
             <textarea
-              value={speech.typed}
-              onChange={(e) => speech.setTyped(e.target.value)}
+              value={voiceSession.speech.typed}
+              onChange={(e) => voiceSession.speech.setTyped(e.target.value)}
               rows={8}
               placeholder="Type or paste what you'd say..."
               className="t-lead w-full resize-y rounded-[var(--radius-md)] border border-line bg-black/20 p-6 text-ink outline-none placeholder:text-ink-4 focus:border-accent"
             />
           ) : (
-            /* Editorial: set at reading size with generous leading, not a
-               cramped log. Settled words are ink; the in-flight phrase is
-               dimmed, so you can see the machine still thinking. */
             <div className="min-h-[8rem] rounded-[var(--radius-md)] border border-line/60 p-6">
-              {speech.finalText || speech.interimText ? (
+              {voiceSession.transcript ? (
                 <p className="t-lead text-ink">
-                  {speech.finalText}{" "}
-                  <span className="text-ink-4">{speech.interimText}</span>
+                  {voiceSession.transcript}
                 </p>
               ) : (
                 <p className="t-lead text-ink-4">Your words appear here as you speak.</p>
@@ -293,15 +357,9 @@ export function PracticeRoom({
             className="pressable mt-4 inline-flex items-center gap-2 text-[13px] text-ink-4 hover:text-ink-2"
           >
             <Keyboard className="size-3.5" />
-            {typedMode ? "Use the microphone instead" : "Mic not working? Type it instead"}
+            {typedMode ? "Use microphone instead" : "Type answer instead"}
           </button>
         </motion.section>
-      )}
-
-      {speech.error && !typedMode && (
-        <p className="t-meta mt-6 rounded-[var(--radius-xs)] border border-line/60 px-4 py-3 text-ink-2">
-          {speech.error}
-        </p>
       )}
     </div>
   );

@@ -191,3 +191,16 @@ export interface SessionConfig {
   /** Conversation / scenario role-play. */
   scenarioId?: string;
 }
+
+export interface ProfileData {
+  id: string;
+  userId: string;
+  username: string | null;
+  age: number | null;
+  onboardingCompleted: boolean;
+  skillsDescription: string | null;
+  preferredLanguage: Language;
+  createdAt: Date;
+  updatedAt: Date;
+}
+

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState } from "@/components/ui/states";
 import { getDailyTopic, getProfile, getRecentSessions, getStreak } from "@/lib/practice";
-import { requireUser } from "@/lib/session";
+import { requireOnboardedUser } from "@/lib/session";
 import { displayName } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -39,7 +39,7 @@ function getSessionHref(session: { id: string; mode: string | null; overallScore
  * numbers shout and the actual task hides underneath them.
  */
 export default async function DashboardPage() {
-  const user = await requireUser("/dashboard");
+  const { user } = await requireOnboardedUser("/dashboard");
 
   const [streak, sessions, profile, topic] = await Promise.all([
     getStreak(user.id),

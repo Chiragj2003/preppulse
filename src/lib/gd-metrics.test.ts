@@ -95,8 +95,8 @@ assert.equal(
 }
 
 /* ── personas ──────────────────────────────────────────────────────────── */
-assert.equal(GD_PERSONAS.length, 4, "the panel is 4 plus a moderator, inside the 3-5 brief");
-assert.equal(new Set(GD_PERSONAS.map((p) => p.id)).size, 4, "persona ids are unique");
+assert.equal(GD_PERSONAS.length, 10, "the persona pool has 10 personas");
+assert.equal(new Set(GD_PERSONAS.map((p) => p.id)).size, 10, "persona ids are unique");
 assert.ok(GD_PERSONAS.every((p) => p.instruction.length > 40), "each persona has a real brief");
 assert.equal(personaById("maya")?.name, "Maya");
 assert.equal(personaById("moderator")?.trait, "moderator");

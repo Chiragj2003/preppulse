@@ -30,12 +30,36 @@ export default async function InterviewReportPage({
   let sessionResult;
   try {
     sessionResult = await getInterview(sessionId, user.id);
-  } catch (error) {
-    if (error instanceof AppError && error.code === "not_found") {
-      notFound();
-    }
-    throw error;
+  } catch {
+    sessionResult = null;
   }
+
+  if (!sessionResult) {
+    return (
+      <div className="mx-auto max-w-xl px-5 pt-32 pb-24 text-center">
+        <Surface material="dense" radius="lg" refract className="p-8 sm:p-10">
+          <h1 className="t-title text-2xl">Interview Report Unavailable</h1>
+          <p className="t-lead mt-3 text-ink-3">
+            We couldn&apos;t load the interview report for ID <code className="text-accent text-xs font-mono px-2 py-1 rounded bg-accent/10">{sessionId}</code>.
+            It may belong to a different account, or hasn&apos;t been completed.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Link href="/interview">
+              <Button variant="primary" size="lg">
+                Start New Interview
+              </Button>
+            </Link>
+            <Link href="/dashboard">
+              <Button variant="glass" size="lg">
+                Dashboard
+              </Button>
+            </Link>
+          </div>
+        </Surface>
+      </div>
+    );
+  }
+
   const { session, questions, answers } = sessionResult;
   if (answers.length === 0) redirect(`/interview/${sessionId}`);
 

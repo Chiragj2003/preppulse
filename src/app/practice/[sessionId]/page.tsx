@@ -39,6 +39,7 @@ export default async function PracticeRoomPage({
       topic={session.promptSnapshot ?? "Open topic"}
       prepSeconds={clampSeconds(prep, 30, 0, 120)}
       speakSeconds={clampSeconds(speak, 120, 30, 600)}
+      language={session.language}
     />
   );
 }

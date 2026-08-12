@@ -43,6 +43,7 @@ export default async function InterviewRoomPage({
       sessionId={session.id}
       role={session.config?.role ?? session.promptSnapshot ?? "the role"}
       persona={(session.config?.persona ?? "professional") as InterviewerPersona}
+      language={session.language}
       questions={questions.map((q) => ({
         id: q.id,
         position: q.position,

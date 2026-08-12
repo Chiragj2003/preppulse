@@ -3,15 +3,15 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Keyboard, Mic, RotateCcw, Square } from "lucide-react";
+import { ArrowRight, Check, Keyboard, Mic, RotateCcw, Square, Volume2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { Surface } from "@/components/ui/surface";
-import { Waveform } from "@/components/ui/waveform";
+import { VoiceVisualizer } from "@/components/VoiceVisualizer";
+import { useVoiceSession } from "@/lib/useVoiceSession";
 import { PERSONA_LABELS, type InterviewerPersona, type QuestionKind } from "@/lib/types";
 import { formatDuration } from "@/lib/utils";
-import { useSpeech } from "@/lib/use-speech";
 import { finishInterview, submitAnswer } from "@/app/interview/actions";
 
 interface Question {
@@ -25,24 +25,37 @@ interface Question {
 type Verdict = Awaited<ReturnType<typeof submitAnswer>>;
 type Phase = "asking" | "answering" | "scoring" | "verdict" | "failed";
 
-/**
- * The interview room shows one question at a time and gives the verdict on
- * each answer before moving on — the per-answer-then-aggregate loop.
- *
- * Structurally more formal than the daily practice room (a visible question
- * rail, a running average, an explicit Next) while staying in the same visual
- * language.
- */
+function playChime(frequency = 880, durationMs = 120) {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + durationMs / 1000);
+    osc.start();
+    osc.stop(ctx.currentTime + durationMs / 1000);
+    osc.onended = () => ctx.close();
+  } catch {
+    /* AudioContext fallback */
+  }
+}
+
 export function InterviewRoom({
   sessionId,
   role,
   persona,
   questions,
+  language = "en",
 }: {
   sessionId: string;
   role: string;
   persona: InterviewerPersona;
   questions: Question[];
+  language?: string;
 }) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
@@ -65,36 +78,46 @@ export function InterviewRoom({
   const [average, setAverage] = useState<number | null>(null);
   const [finishing, setFinishing] = useState(false);
 
-  const speech = useSpeech();
-  const startedAtRef = useRef(0);
-
   const question = questions[index];
   const answeredCount = Object.keys(scores).length;
+  const startedAtRef = useRef(0);
 
-  // Elapsed timer while answering — an interview has no hard clock, but people
-  // still need to feel how long they've been talking.
+  const voiceSession = useVoiceSession({
+    sessionId,
+    mode: "interview",
+    persona,
+    topic: role,
+    language: language as "en" | "hinglish" | "hi",
+    autoSave: true,
+  });
+
+  // Timer while answering
   useEffect(() => {
     if (phase !== "answering") return;
     const id = setInterval(() => setElapsed((v) => v + 1), 1000);
     return () => clearInterval(id);
   }, [phase]);
 
-  const { start: startMic, stop: stopMic } = speech;
+  // Read question aloud on display
   useEffect(() => {
-    if (phase === "answering" && !typedMode) startMic();
-    else stopMic();
-  }, [phase, typedMode, startMic, stopMic]);
-
-  const transcript = typedMode ? speech.typed : `${speech.finalText} ${speech.interimText}`.trim();
+    if (phase === "asking" && question && !typedMode) {
+      const timer = setTimeout(() => {
+        playChime(660, 100);
+        voiceSession.speakResponse(question.question, "interviewer");
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [phase, question?.id, typedMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = useCallback(async () => {
-    const text = transcript.trim();
+    const text = (typedMode ? voiceSession.speech.typed : voiceSession.transcript).trim();
     if (!text) {
       setError("We didn't catch an answer. Try again, or type it instead.");
       setPhase("failed");
       return;
     }
 
+    voiceSession.stopSession();
     setPhase("scoring");
     setError(null);
 
@@ -123,19 +146,26 @@ export function InterviewRoom({
     }));
     setAverage(result.data.runningAverage);
     setPhase("verdict");
-  }, [elapsed, question?.id, sessionId, transcript, typedMode]);
+
+    if (!typedMode) {
+      playChime(440, 150);
+      voiceSession.speakResponse(result.data.feedback, "interviewer");
+    }
+  }, [elapsed, question?.id, sessionId, typedMode, voiceSession]);
 
   function beginAnswering() {
-    speech.reset();
+    voiceSession.speech.reset();
     setElapsed(0);
     startedAtRef.current = Date.now();
     setPhase("answering");
+    void voiceSession.startSession();
   }
 
   function goNext() {
     if (index < questions.length - 1) {
+      voiceSession.stopSession();
       setIndex(index + 1);
-      speech.reset();
+      voiceSession.speech.reset();
       setVerdict(null);
       setElapsed(0);
       startedAtRef.current = 0;
@@ -144,6 +174,7 @@ export function InterviewRoom({
   }
 
   async function complete() {
+    voiceSession.stopSession();
     setFinishing(true);
     const result = await finishInterview(sessionId);
     if (result.ok) {
@@ -166,18 +197,26 @@ export function InterviewRoom({
           <span className="mx-3 text-ink-4">/</span>
           <span className="text-ink-2">{role}</span>
         </p>
-        <p className="t-micro">
-          {answeredCount} of {questions.length} answered
-          {average !== null && (
-            <>
-              <span className="mx-3 text-ink-4">/</span>
-              <span className="text-accent">avg {average}</span>
-            </>
-          )}
-        </p>
+
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/10 border border-accent/30 text-accent text-xs font-medium">
+            <Sparkles className="size-3.5" />
+            <span>Structured Interview Flow</span>
+          </span>
+
+          <p className="t-micro">
+            {answeredCount} of {questions.length} answered
+            {average !== null && (
+              <>
+                <span className="mx-3 text-ink-4">/</span>
+                <span className="text-accent">avg {average}</span>
+              </>
+            )}
+          </p>
+        </div>
       </div>
 
-      {/* Progress: one hairline segment per question, filled as they're scored */}
+      {/* Progress bar */}
       <div className="mt-5 flex gap-1.5" aria-hidden>
         {questions.map((q, i) => (
           <span
@@ -195,7 +234,7 @@ export function InterviewRoom({
         ))}
       </div>
 
-      {/* Question */}
+      {/* Question Header */}
       <motion.div
         key={question.id}
         initial={reduceMotion ? false : { opacity: 0, y: 12 }}
@@ -203,11 +242,21 @@ export function InterviewRoom({
         transition={{ type: "spring", bounce: 0, duration: 0.5 }}
         className="mt-12"
       >
-        <p className="t-micro mb-5">
-          Question {index + 1}
-          <span className="mx-3 text-ink-4">/</span>
-          <span className="text-ink-2">{question.kind}</span>
-        </p>
+        <div className="flex items-center gap-3 mb-5">
+          <p className="t-micro">
+            Question {index + 1}
+            <span className="mx-3 text-ink-4">/</span>
+            <span className="text-ink-2">{question.kind}</span>
+          </p>
+          <button
+            type="button"
+            className="pressable text-ink-4 hover:text-ink-2"
+            onClick={() => voiceSession.speakResponse(question.question, "interviewer")}
+            aria-label="Read question aloud"
+          >
+            <Volume2 className="size-3.5" />
+          </button>
+        </div>
         <h1 className="t-title max-w-2xl">{question.question}</h1>
       </motion.div>
 
@@ -233,7 +282,7 @@ export function InterviewRoom({
 
         {phase === "answering" && (
           <div>
-            <div className="flex items-center gap-6">
+            <div className="flex items-center justify-between gap-6 mb-6">
               <span className="t-numeric text-[34px] leading-none">{formatDuration(elapsed)}</span>
               <Button
                 variant="glass"
@@ -244,43 +293,41 @@ export function InterviewRoom({
               </Button>
             </div>
 
-            {!typedMode && <Waveform active className="mt-8 h-12 w-full max-w-md" />}
-
-            <div className="mt-8">
-              <p className="t-micro mb-3">{typedMode ? "Your answer" : "Transcript"}</p>
-              {typedMode ? (
+            {!typedMode ? (
+              <VoiceVisualizer
+                status={voiceSession.status}
+                audioLevel={voiceSession.audioLevel}
+                transcript={voiceSession.transcript}
+                isMicActive={voiceSession.isMicActive}
+                isSpeaking={voiceSession.isSpeaking}
+                counterpartName={PERSONA_LABELS[persona]}
+                onInterrupt={voiceSession.interrupt}
+                onStop={() => void send()}
+              />
+            ) : (
+              <div className="mt-8">
                 <textarea
-                  value={speech.typed}
-                  onChange={(e) => speech.setTyped(e.target.value)}
+                  value={voiceSession.speech.typed}
+                  onChange={(e) => voiceSession.speech.setTyped(e.target.value)}
                   rows={8}
                   placeholder="Type your answer..."
                   className="t-lead w-full resize-y rounded-[var(--radius-md)] border border-line bg-black/25 p-6 text-ink outline-none placeholder:text-ink-4 focus:border-accent"
                 />
-              ) : (
-                <div className="min-h-[7rem] rounded-[var(--radius-md)] border border-line/60 p-6">
-                  <p className="t-lead text-ink">
-                    {speech.finalText || speech.interimText ? (
-                      <>
-                        {speech.finalText} <span className="text-ink-4">{speech.interimText}</span>
-                      </>
-                    ) : (
-                      <span className="text-ink-4">Your words appear here as you speak.</span>
-                    )}
-                  </p>
-                </div>
-              )}
+              </div>
+            )}
 
-              <button
-                type="button"
-                onClick={() => setTypedMode((v) => !v)}
-                className="pressable mt-4 inline-flex items-center gap-2 text-[13px] text-ink-4 hover:text-ink-2"
-              >
-                <Keyboard className="size-3.5" />
-                {typedMode ? "Use the microphone" : "Type it instead"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setTypedMode((v) => !v)}
+              className="pressable mt-6 inline-flex items-center gap-2 text-[13px] text-ink-4 hover:text-ink-2"
+            >
+              <Keyboard className="size-3.5" />
+              {typedMode ? "Use microphone" : "Type answer instead"}
+            </button>
 
-            {speech.error && <p className="t-meta mt-5 text-ink-2">{speech.error}</p>}
+            {voiceSession.errorMessage && (
+              <p className="t-meta mt-5 text-ink-2">{voiceSession.errorMessage}</p>
+            )}
           </div>
         )}
 
@@ -364,7 +411,7 @@ export function InterviewRoom({
                   loading={finishing}
                   onClick={() => void complete()}
                 >
-                  Finish and see the report
+                  Finish and see report
                 </Button>
               )}
             </div>
@@ -372,7 +419,6 @@ export function InterviewRoom({
         )}
       </div>
 
-      {/* Escape hatch: end early once anything has been answered */}
       {answeredCount > 0 && phase !== "scoring" && !allAnswered && (
         <div className="mt-16 border-t border-line pt-8">
           <button
@@ -404,4 +450,3 @@ function Notes({ title, items, accent }: { title: string; items: string[]; accen
     </div>
   );
 }
-

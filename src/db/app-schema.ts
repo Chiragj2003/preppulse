@@ -165,6 +165,9 @@ export const profiles = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    username: text("username"),
+    age: integer("age"),
+    onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
     /** Either user-written or distilled from an uploaded resume (Phase 3). */
     skillsDescription: text("skills_description"),
     /** Structured JSON only — the uploaded PDF itself is never stored. */
@@ -174,7 +177,10 @@ export const profiles = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex("profiles_user_unique").on(table.userId)],
+  (table) => [
+    uniqueIndex("profiles_user_unique").on(table.userId),
+    uniqueIndex("profiles_username_unique").on(table.username),
+  ],
 );
 
 /* ── ai_usage ──────────────────────────────────────────────────────────────

@@ -2,16 +2,15 @@
 
 import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { Mic, Send, Square } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Mic, Send, Square, Volume2, VolumeX, Sparkles } from "lucide-react";
 
 import { finishDiscussion, speak } from "@/app/discuss/actions";
 import { Button } from "@/components/ui/button";
-import { useSpeech } from "@/lib/use-speech";
-import { useTTS } from "@/lib/use-tts";
-import { Waveform } from "@/components/ui/waveform";
 import { ErrorState } from "@/components/ui/states";
 import { Surface } from "@/components/ui/surface";
+import { VoiceVisualizer } from "@/components/VoiceVisualizer";
+import { useVoiceSession, type VoiceSessionMode } from "@/lib/useVoiceSession";
 import {
   computeGdMetrics,
   personaById,
@@ -30,11 +29,6 @@ interface Turn {
   role: string;
 }
 
-/**
- * The room. A transcript that grows, one composer, and a live read on how much
- * of the floor the user is taking — the metric that actually changes behaviour
- * mid-discussion, since both silence and dominating cost you.
- */
 export type RoomMode = "group_discussion" | "debate" | "conversation" | "scenario";
 
 export function DiscussionRoom({
@@ -70,13 +64,32 @@ export function DiscussionRoom({
   );
   const [done, setDone] = useState(completed);
   const [typedMode, setTypedMode] = useState(false);
-  
-  const tts = useTTS(language);
-  const speech = useSpeech();
+
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const isDebate = mode === "debate";
   const isRolePlay = mode === "scenario" || mode === "conversation";
+
+  const sendRef = useRef<() => void>(() => {});
+
+  // Advanced Voice Session Hook with low-latency VAD & auto-interrupt
+  const voiceSession = useVoiceSession({
+    sessionId,
+    mode: mode as VoiceSessionMode,
+    topic,
+    stance,
+    stage,
+    language: language as "en" | "hinglish" | "hi",
+    autoSave: true,
+    onTurnComplete: (speaker, text) => {
+      if (speaker === null && text.trim() && !busy) {
+        void sendRef.current();
+      }
+    },
+    onInterrupted: () => {
+      console.log("[DiscussionRoom] Candidate interrupted AI speech");
+    },
+  });
 
   const metrics = computeGdMetrics(
     turns.map((t) => ({
@@ -94,35 +107,17 @@ export function DiscussionRoom({
     endRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "end" });
   }, [turns.length, reduceMotion]);
 
-  const sendRef = useRef(send);
-  sendRef.current = send;
-
-  // Auto-send when the user stops talking for 2 seconds (ChatGPT voice mode style)
-  useEffect(() => {
-    if (typedMode || busy || done) return;
-    const text = `${speech.finalText} ${speech.interimText}`.trim();
-    if (!text) return;
-
-    const timeout = setTimeout(() => {
-      void sendRef.current();
-    }, 2000);
-
-    return () => clearTimeout(timeout);
-  }, [speech.interimText, speech.finalText, typedMode, busy, done]);
-
-  async function send() {
-    const content = typedMode ? draft.trim() : `${speech.finalText} ${speech.interimText}`.trim();
+  const send = useCallback(async () => {
+    const content = typedMode ? draft.trim() : voiceSession.transcript.trim();
     if (!content || busy) return;
 
     if (!typedMode) {
-      speech.reset();
+      voiceSession.sendTurn(content, null, "candidate");
     }
 
     setBusy(true);
     setError(null);
 
-    // Optimistic: the user's own words appear immediately. Waiting on the
-    // round trip to show what you just said makes the room feel dead.
     const optimistic: Turn = {
       id: `local-${Date.now()}`,
       speaker: null,
@@ -146,8 +141,6 @@ export function DiscussionRoom({
     }
 
     setTurns((prev) => [
-      // Patch the optimistic turn with the tags the model just assigned, or
-      // the live arguments/rebuttals counters stay at zero until a refresh.
       ...prev.map((turn) =>
         turn.id === optimistic.id
           ? {
@@ -170,16 +163,19 @@ export function DiscussionRoom({
 
     if (result.data.stage) setStage(result.data.stage);
     if (result.data.finished) setDone(true);
-    
-    // Read the panel's replies aloud
-    result.data.replies.forEach((reply) => {
-      tts.speak(reply.content);
-    });
-  }
+
+    // Speak AI replies using low latency voice response with interruptibility
+    if (!typedMode && result.data.replies.length > 0) {
+      const fullReply = result.data.replies.map((r) => r.content).join(" ");
+      const speakerId = result.data.replies[0]?.speaker || "ai";
+      voiceSession.speakResponse(fullReply, speakerId);
+    }
+  }, [typedMode, voiceSession, busy, draft, isDebate, stage, sessionId]);
+
+  sendRef.current = send;
 
   async function end() {
-    tts.stop();
-    speech.stop();
+    voiceSession.stopSession();
     setBusy(true);
     const result = await finishDiscussion(sessionId);
     setBusy(false);
@@ -191,35 +187,45 @@ export function DiscussionRoom({
     }
   }
 
+  function replayTurn(content: string) {
+    voiceSession.speakResponse(content);
+  }
+
   return (
-    <div className="mx-auto max-w-3xl px-5 pt-24 pb-40 sm:px-6">
-      {/* Topic + live standing */}
+    <div className="mx-auto max-w-3xl px-5 pt-24 pb-48 sm:px-6">
+      {/* Header */}
       <header className="rise">
-        <p className="t-micro mb-5">
-          {isDebate
-            ? `Debate / you are ${stance}`
-            : isRolePlay
-              ? (title ?? "Role play")
-              : "Group discussion"}
-          {isDebate && (
-            <>
-              <span className="mx-3 text-ink-4">/</span>
-              <span className="text-accent">{stage}</span>
-            </>
-          )}
-          {isRolePlay && counterpartName && (
-            <>
-              <span className="mx-3 text-ink-4">/</span>
-              <span className="text-ink-2">with {counterpartName}</span>
-            </>
-          )}
-        </p>
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <p className="t-micro">
+            {isDebate
+              ? `Debate / you are ${stance}`
+              : isRolePlay
+                ? (title ?? "Role play")
+                : "Group discussion"}
+            {isDebate && (
+              <>
+                <span className="mx-3 text-ink-4">/</span>
+                <span className="text-accent">{stage}</span>
+              </>
+            )}
+            {isRolePlay && counterpartName && (
+              <>
+                <span className="mx-3 text-ink-4">/</span>
+                <span className="text-ink-2">with {counterpartName}</span>
+              </>
+            )}
+          </p>
+
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/10 border border-accent/30 text-accent text-xs font-medium">
+            <Sparkles className="size-3.5" />
+            <span>Advanced Audio Active</span>
+          </span>
+        </div>
+
         <h1 className="t-title max-w-2xl">{topic}</h1>
         {isDebate && <p className="t-meta mt-4">{STAGE_BRIEF[stage]}</p>}
       </header>
 
-      {/* Role-play is judged on how it went, not on airtime — a negotiation
-          where you spoke 70% is not automatically a failure. */}
       {!isRolePlay && (
         <div className="mt-8 flex flex-wrap items-baseline gap-x-10 gap-y-4 border-y border-line py-5">
           <Figure value={`${metrics.speakingSharePct}%`} label="your airtime" />
@@ -229,7 +235,7 @@ export function DiscussionRoom({
         </div>
       )}
 
-      {/* Transcript */}
+      {/* Transcript List */}
       <div className="mt-10 space-y-7">
         {turns.length === 0 && (
           <p className="t-lead text-ink-4">
@@ -258,10 +264,22 @@ export function DiscussionRoom({
               transition={{ type: "spring", bounce: 0, duration: 0.45 }}
               className={isUser ? "pl-0 sm:pl-16" : ""}
             >
-              <p className="t-micro mb-2.5" style={{ color: isUser ? "var(--color-accent)" : undefined }}>
-                {name}
-                {persona && <span className="ml-3 text-ink-4">{persona.trait}</span>}
-              </p>
+              <div className="flex items-center gap-2 mb-2.5">
+                <p className="t-micro" style={{ color: isUser ? "var(--color-accent)" : undefined }}>
+                  {name}
+                  {persona && <span className="ml-3 text-ink-4">{persona.trait}</span>}
+                </p>
+                {!isUser && (
+                  <button
+                    type="button"
+                    className="pressable ml-auto text-ink-4 hover:text-ink-2"
+                    onClick={() => replayTurn(turn.content)}
+                    aria-label={`Replay ${name}'s response`}
+                  >
+                    <Volume2 className="size-3.5" />
+                  </button>
+                )}
+              </div>
               {isUser ? (
                 <Surface material="dense" radius="md" className="p-5">
                   <p className="t-body text-ink">{turn.content}</p>
@@ -286,97 +304,87 @@ export function DiscussionRoom({
         <ErrorState message={error} onRetry={() => setError(null)} retryLabel="Dismiss" />
       )}
 
-      {/* Composer, pinned so the user can always speak */}
+      {/* Floating Audio Control & Visualizer Dock */}
       {!done ? (
         <div
           className="fixed inset-x-0 bottom-0 px-4 pb-4 sm:px-6 sm:pb-6"
           style={{ zIndex: "var(--z-sticky)" }}
         >
-          <Surface material="frost" radius="lg" className="mx-auto max-w-3xl p-3">
+          <div className="mx-auto max-w-3xl space-y-3">
             {!typedMode ? (
-              <div className="flex items-center gap-4 py-2 px-3">
-                <Button
-                  variant="primary"
-                  onClick={() => (speech.interimText || speech.finalText ? send() : speech.start())}
-                  loading={busy}
-                  disabled={!speech.supported}
-                  icon={speech.interimText || speech.finalText ? <Send className="size-4" /> : <Mic className="size-4" />}
-                >
-                  {speech.interimText || speech.finalText ? "Send" : "Speak"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => speech.stop()}
-                  disabled={!speech.interimText && !speech.finalText && !speech.isRecording}
-                  icon={<Square className="size-4" fill="currentColor" />}
-                  aria-label="Stop recording"
-                />
-                <div className="flex-1 overflow-hidden h-6 flex items-center justify-center relative">
-                  {(speech.interimText || speech.finalText) ? (
-                    <p className="t-body truncate text-ink">
-                      {speech.finalText} {speech.interimText}
-                    </p>
-                  ) : (
-                    <Waveform active={speech.isRecording} />
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="pressable t-meta text-ink-4 hover:text-ink-2"
-                  onClick={() => {
-                    speech.stop();
-                    setTypedMode(true);
-                  }}
-                >
-                  Type instead
-                </button>
-              </div>
+              <VoiceVisualizer
+                status={voiceSession.status}
+                audioLevel={voiceSession.audioLevel}
+                transcript={voiceSession.transcript}
+                isMicActive={voiceSession.isMicActive}
+                isSpeaking={voiceSession.isSpeaking}
+                counterpartName={isDebate ? "Opponent" : counterpartName || "Panel"}
+                onToggleMic={() => {
+                  if (voiceSession.status === "idle") {
+                    void voiceSession.startSession();
+                  } else {
+                    voiceSession.stopSession();
+                  }
+                }}
+                onInterrupt={voiceSession.interrupt}
+                onStop={voiceSession.stopSession}
+              />
             ) : (
-              <div className="flex items-end gap-2">
-                <textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void send();
-                    }
-                  }}
-                  rows={2}
-                  placeholder={isDebate ? `Your ${stage}...` : "Make your point..."}
-                  className="t-body max-h-40 min-h-[3.5rem] flex-1 resize-none bg-transparent px-3 py-2.5 text-ink outline-none placeholder:text-ink-4"
-                />
-                <div className="flex flex-col gap-2">
-                  <Button
-                    variant="primary"
-                    onClick={() => void send()}
-                    loading={busy}
-                    disabled={!draft.trim()}
-                    icon={<Send className="size-4" />}
-                  >
-                    Say it
-                  </Button>
-                  <button
-                    type="button"
-                    className="pressable t-meta text-ink-4 hover:text-ink-2 self-center"
-                    onClick={() => setTypedMode(false)}
-                  >
-                    Speak
-                  </button>
+              <Surface material="frost" radius="lg" className="p-3">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void send();
+                      }
+                    }}
+                    rows={2}
+                    placeholder={isDebate ? `Your ${stage}...` : "Make your point..."}
+                    className="t-body max-h-40 min-h-[3.5rem] flex-1 resize-none bg-transparent px-3 py-2.5 text-ink outline-none placeholder:text-ink-4"
+                  />
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="primary"
+                      onClick={() => void send()}
+                      loading={busy}
+                      disabled={!draft.trim()}
+                      icon={<Send className="size-4" />}
+                    >
+                      Say it
+                    </Button>
+                    <button
+                      type="button"
+                      className="pressable t-meta text-ink-4 hover:text-ink-2 self-center"
+                      onClick={() => setTypedMode(false)}
+                    >
+                      Use Voice
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </Surface>
             )}
-          </Surface>
 
-          <div className="mx-auto mt-3 flex max-w-3xl justify-center">
-            <button
-              type="button"
-              onClick={() => void end()}
-              disabled={busy || turns.length === 0}
-              className="pressable t-micro hover:text-ink-2 disabled:opacity-40"
-            >
-              End and see how I did
-            </button>
+            <div className="flex items-center justify-between max-w-xl mx-auto px-2">
+              <button
+                type="button"
+                className="pressable t-meta text-ink-4 hover:text-ink-2 text-xs"
+                onClick={() => setTypedMode((v) => !v)}
+              >
+                {typedMode ? "Switch to Voice Mode" : "Switch to Typed Mode"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void end()}
+                disabled={busy || turns.length === 0}
+                className="pressable t-micro hover:text-ink-2 disabled:opacity-40"
+              >
+                End and see report
+              </button>
+            </div>
           </div>
         </div>
       ) : (

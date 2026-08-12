@@ -156,11 +156,15 @@ export function DailyRoll({
 
           <motion.p
             key={step}
-            initial={reduceMotion ? false : { y: 30, opacity: 0, filter: "blur(6px)" }}
+            initial={reduceMotion ? false : { y: -65, opacity: 0.1, filter: "blur(7px)" }}
             animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
-            transition={{ type: "spring", bounce: 0, duration: 0.22 }}
+            transition={
+              landed
+                ? { type: "spring", stiffness: 280, damping: 22, bounce: 0.35 }
+                : { duration: 0.09, ease: "linear" }
+            }
             className={`t-title relative max-w-2xl text-center transition-colors duration-500 ${
-              landed ? "text-ink" : "text-ink-4"
+              landed ? "text-ink font-normal" : "text-ink-4"
             }`}
             style={{ willChange: stage === "rolling" ? "transform, opacity" : undefined }}
           >

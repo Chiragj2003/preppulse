@@ -46,6 +46,22 @@ export async function requireUser(returnTo?: string) {
   return session.user;
 }
 
+/**
+ * Enforces mandatory profile completion after login.
+ * If user hasn't set up unique username & age/onboarding, redirects to /onboarding.
+ */
+export async function requireOnboardedUser(returnTo?: string) {
+  const user = await requireUser(returnTo);
+  const { getProfile } = await import("./practice");
+  const profile = await getProfile(user.id);
+
+  if ((!profile?.onboardingCompleted || !profile?.username) && returnTo !== "/onboarding") {
+    redirect("/onboarding");
+  }
+
+  return { user, profile };
+}
+
 /** For API routes: throw a 401 AppError instead of redirecting. */
 export async function requireUserApi() {
   const session = await getSession();
@@ -54,3 +70,4 @@ export async function requireUserApi() {
   }
   return session.user;
 }
+

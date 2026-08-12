@@ -7,8 +7,9 @@ import { Surface } from "@/components/ui/surface";
 import { checkCanStart } from "@/lib/gate";
 import { GD_PERSONAS } from "@/lib/gd-metrics";
 import { getRandomTopic } from "@/lib/practice";
-import { requireUser } from "@/lib/session";
+import { requireOnboardedUser } from "@/lib/session";
 import { PersonaSelector } from "@/components/persona-selector";
+import { RouletteTopicSlot } from "@/components/roulette-topic-slot";
 import { SpinWheelButton } from "@/components/spin-wheel-button";
 import { startDiscussion } from "./actions";
 
@@ -19,7 +20,7 @@ export default async function DiscussSetupPage({
 }: {
   searchParams: Promise<{ mode?: string }>;
 }) {
-  const user = await requireUser("/discuss");
+  const { user } = await requireOnboardedUser("/discuss");
   const { mode } = await searchParams;
   const debate = mode === "debate";
 
@@ -62,13 +63,10 @@ export default async function DiscussSetupPage({
         <input type="hidden" name="mode" value={debate ? "debate" : "group_discussion"} />
         {topic && <input type="hidden" name="topicId" value={topic.id} />}
 
-        <div className="mb-5 flex items-center justify-between">
-          <p className="t-micro">{debate ? "The motion" : "The topic"}</p>
-          <SpinWheelButton href={`/discuss?mode=${debate ? "debate" : "group_discussion"}&roll=${Date.now()}`} />
-        </div>
-        <Surface material="dense" radius="lg" refract className="p-7 sm:p-9">
-          <p className="t-title">{topic?.promptText ?? "No topics seeded yet."}</p>
-        </Surface>
+        <RouletteTopicSlot
+          initialTopic={topic?.promptText ?? "No topics seeded yet."}
+          category={debate ? "Debate Motion" : "Group Discussion Topic"}
+        />
 
         {debate && (
           <fieldset className="mt-8">

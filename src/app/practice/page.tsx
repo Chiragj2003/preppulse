@@ -5,7 +5,7 @@ import { DailyRoll } from "@/components/daily-roll";
 import { EmptyState } from "@/components/ui/states";
 import { KnowledgeBaseModal } from "@/components/knowledge-base-modal";
 import { getDailyTopic, getDecoyPrompts, getRandomTopic, getStreak } from "@/lib/practice";
-import { requireUser } from "@/lib/session";
+import { requireOnboardedUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Practice" };
 
@@ -19,7 +19,7 @@ export default async function PracticePage({
 }: {
   searchParams: Promise<{ mode?: string }>;
 }) {
-  const user = await requireUser("/practice");
+  const { user } = await requireOnboardedUser("/practice");
   const { mode } = await searchParams;
   const quick = mode === "quick";
 

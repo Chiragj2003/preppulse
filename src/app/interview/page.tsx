@@ -6,7 +6,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { Surface } from "@/components/ui/surface";
 import { checkCanStart } from "@/lib/gate";
 import { getProfile } from "@/lib/practice";
-import { requireUser } from "@/lib/session";
+import { requireOnboardedUser } from "@/lib/session";
 import { INTERVIEWER_PERSONAS, PERSONA_BLURBS, PERSONA_LABELS } from "@/lib/types";
 import { startInterview } from "./actions";
 
@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Mock interview" };
  * Setup, not a wizard. One screen: who is interviewing you, for what, how long.
  */
 export default async function InterviewSetupPage() {
-  const user = await requireUser("/interview");
+  const { user } = await requireOnboardedUser("/interview");
   const [profile, locked] = await Promise.all([
     getProfile(user.id),
     checkCanStart(user.id, "interview"),

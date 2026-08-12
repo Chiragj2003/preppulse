@@ -40,10 +40,20 @@ async function main() {
     .insert(profiles)
     .values({
       userId: demoUser.id,
+      username: "demo_alex",
+      age: 24,
+      onboardingCompleted: true,
       skillsDescription: "Software engineer interested in backend architecture and system design.",
       preferredLanguage: "en",
     })
-    .onConflictDoNothing({ target: profiles.userId });
+    .onConflictDoUpdate({
+      target: profiles.userId,
+      set: {
+        username: "demo_alex",
+        age: 24,
+        onboardingCompleted: true,
+      },
+    });
 
   // 3. Ensure streak exists with realistic values
   await db
