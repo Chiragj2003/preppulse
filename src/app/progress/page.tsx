@@ -6,7 +6,8 @@ import { EmptyState } from "@/components/ui/states";
 import { streakLine } from "@/lib/gamification";
 import { getLeaderboard, getUserRank } from "@/lib/leaderboard";
 import { getStreak } from "@/lib/practice";
-import { getProgress } from "@/lib/progress";
+import { getDimensionAverages, getProgress } from "@/lib/progress";
+import { DimensionRadar } from "@/components/dimension-radar";
 import { requireUser } from "@/lib/session";
 
 import { BackButton } from "@/components/back-button";
@@ -25,7 +26,7 @@ export default async function ProgressPage() {
   const user = await requireUser("/progress");
   const streak = await getStreak(user.id);
 
-  const [progress, board, rank] = await Promise.all([
+  const [progress, board, rank, dimensions] = await Promise.all([
     getProgress(user.id, {
       currentStreak: streak?.currentStreak ?? 0,
       longestStreak: streak?.longestStreak ?? 0,
@@ -33,6 +34,7 @@ export default async function ProgressPage() {
     }),
     getLeaderboard(5),
     getUserRank(user.id),
+    getDimensionAverages(user.id, 30),
   ]);
 
   const earned = progress.badges.filter((b) => b.earned);
@@ -92,6 +94,16 @@ export default async function ProgressPage() {
             <p className="t-micro mb-6">Last fourteen days</p>
             <ProgressChart series={progress.series} />
           </section>
+
+          {dimensions.current && (
+            <section className="rise mt-14 [animation-delay:100ms]">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
+                <p className="t-micro">Where the marks are</p>
+                <p className="t-meta text-ink-4">Six dimensions, last 30 days</p>
+              </div>
+              <DimensionRadar data={dimensions} />
+            </section>
+          )}
 
           <section className="rise mt-14 flex flex-wrap items-baseline gap-x-14 gap-y-8 border-t border-line pt-8 [animation-delay:120ms]">
             <Figure value={progress.averageScore ?? "—"} label="average" />

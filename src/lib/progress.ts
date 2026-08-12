@@ -1,9 +1,10 @@
-import { and, countDistinct, desc, eq, gte, sql } from "drizzle-orm";
+import { and, countDistinct, desc, eq, gte, lt, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { evaluations, interviewAnswers, practiceSessions, subscriptions, plans } from "@/db/schema";
 import { entitlementsFor, isSubscriptionActive, type Entitlements } from "./billing";
 import { buildDailySeries, computeBadges, trend, type Badge, type DayPoint } from "./gamification";
+import type { ScoreDimension } from "./types";
 
 export interface ProgressSummary {
   series: DayPoint[];
@@ -87,6 +88,92 @@ export async function getProgress(
     bestScore,
     averageScore,
     distinctModes,
+  };
+}
+
+/* ── Dimension averages, for the radar ──────────────────────────────────── */
+
+export interface DimensionAverages {
+  current: Record<ScoreDimension, number> | null;
+  previous: Record<ScoreDimension, number> | null;
+  currentSessions: number;
+  previousSessions: number;
+}
+
+/**
+ * Averages each scored dimension over the last N days, plus the N days before
+ * that, so the radar can show the *shape* of a change rather than one polygon
+ * floating without reference.
+ *
+ * Averaged in Postgres by extracting from the `scores` jsonb. Pulling every
+ * evaluation into Node to average six numbers would move a lot of rows for a
+ * six-point chart.
+ *
+ * `pace` is excluded from a session's average when that answer was typed —
+ * the same rule the composite already follows, so the radar can't disagree
+ * with the headline score.
+ */
+export async function getDimensionAverages(
+  userId: string,
+  days = 30,
+): Promise<DimensionAverages> {
+  const now = Date.now();
+  const currentFrom = new Date(now - days * 86_400_000);
+  const previousFrom = new Date(now - days * 2 * 86_400_000);
+
+  const averageFor = (dimension: ScoreDimension) =>
+    dimension === "pace"
+      ? sql<number | null>`round(avg((${evaluations.scores}->>'pace')::numeric) filter (where ${evaluations.inputMode} = 'speech'))`
+      : sql<number | null>`round(avg((${evaluations.scores}->>${sql.raw(`'${dimension}'`)})::numeric))`;
+
+    const select = {
+      sessions: sql<number>`count(*)`.mapWith(Number),
+      fluency: averageFor("fluency").mapWith(Number),
+      vocabulary: averageFor("vocabulary").mapWith(Number),
+      structure: averageFor("structure").mapWith(Number),
+      clarity: averageFor("clarity").mapWith(Number),
+      pace: averageFor("pace").mapWith(Number),
+      fillerControl: averageFor("fillerControl").mapWith(Number),
+    };
+
+  const [current, previous] = await Promise.all([
+    db
+      .select(select)
+      .from(evaluations)
+      .innerJoin(practiceSessions, eq(practiceSessions.id, evaluations.sessionId))
+      .where(
+        and(eq(practiceSessions.userId, userId), gte(practiceSessions.createdAt, currentFrom)),
+      ),
+    db
+      .select(select)
+      .from(evaluations)
+      .innerJoin(practiceSessions, eq(practiceSessions.id, evaluations.sessionId))
+      .where(
+        and(
+          eq(practiceSessions.userId, userId),
+          gte(practiceSessions.createdAt, previousFrom),
+          lt(practiceSessions.createdAt, currentFrom),
+        ),
+      ),
+  ]);
+
+  const shape = (row: (typeof current)[number] | undefined) => {
+    if (!row || row.sessions === 0) return null;
+    return {
+      fluency: row.fluency ?? 0,
+      vocabulary: row.vocabulary ?? 0,
+      structure: row.structure ?? 0,
+      clarity: row.clarity ?? 0,
+      pace: row.pace ?? 0,
+      fillerControl: row.fillerControl ?? 0,
+    };
+  };
+
+  return {
+    current: shape(current[0]),
+    previous: shape(previous[0]),
+    currentSessions: current[0]?.sessions ?? 0,
+    previousSessions: previous[0]?.sessions ?? 0,
   };
 }
 
