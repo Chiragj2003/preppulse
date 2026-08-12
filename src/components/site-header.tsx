@@ -18,7 +18,11 @@ export async function SiteHeader() {
       className="fixed inset-x-0 top-0 px-4 pt-4 sm:px-6 sm:pt-5"
       style={{ zIndex: "var(--z-sticky)" }}
     >
-      <div className="mx-auto flex h-[64px] max-w-6xl items-center justify-between rounded-full border border-white/10 bg-gradient-to-r from-accent/5 via-indigo-500/5 to-purple-500/5 pr-3 pl-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-[32px] saturate-150 transition-all duration-300">
+      {/* `.m-clear` is the floating-chrome material: blur, saturation, the
+          masked specular hairline and the depth shadow, all from tokens. The
+          hand-rolled version here was a second glass recipe plus a three-stop
+          tint that put indigo and purple into a one-accent palette. */}
+      <div className="material m-clear mx-auto flex h-[64px] max-w-6xl items-center justify-between rounded-full pr-3 pl-6">
         <div className="flex items-center">
           <Link
             href="/"

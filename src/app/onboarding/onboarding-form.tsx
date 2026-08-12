@@ -58,7 +58,7 @@ export function OnboardingForm({
   }
 
   return (
-    <Surface material="dense" radius="lg" refract className="p-7 sm:p-10 border border-line/80 shadow-2xl">
+    <Surface material="dense" radius="lg" refract className="p-7 sm:p-10 border border-line/80 shadow-[var(--shadow-float)]">
       <div className="flex items-center gap-3 mb-6">
         <span className="p-2.5 rounded-xl bg-accent/15 border border-accent/30 text-accent">
           <Sparkles className="size-5" />
@@ -80,7 +80,7 @@ export function OnboardingForm({
         </div>
 
         <div className="flex items-center gap-3 border-t sm:border-t-0 sm:border-l border-line/40 pt-3 sm:pt-0 sm:pl-4">
-          <IdCard className="size-4 text-emerald-400 shrink-0" />
+          <IdCard className="size-4 text-[var(--color-positive)] shrink-0" />
           <div className="overflow-hidden">
             <p className="t-micro text-ink-4">Unique User ID</p>
             <p className="t-body text-xs text-ink-3 font-mono truncate" title={user.id}>{user.id}</p>
@@ -130,12 +130,12 @@ export function OnboardingForm({
             </label>
             {checking && <span className="t-micro text-ink-4 animate-pulse">Checking availability...</span>}
             {!checking && available === true && (
-              <span className="t-micro text-emerald-400 inline-flex items-center gap-1">
+              <span className="t-micro text-[var(--color-positive)] inline-flex items-center gap-1">
                 <Check className="size-3" /> Available
               </span>
             )}
             {!checking && available === false && (
-              <span className="t-micro text-red-400 inline-flex items-center gap-1">
+              <span className="t-micro text-[var(--color-critical)] inline-flex items-center gap-1">
                 <AlertCircle className="size-3" /> Taken
               </span>
             )}
@@ -153,9 +153,9 @@ export function OnboardingForm({
               placeholder="username"
               className={`t-body w-full rounded-xl border bg-black/25 pl-8 pr-4 py-3 font-mono text-ink outline-none transition-colors ${
                 available === true
-                  ? "border-emerald-500/60 focus:border-emerald-500"
+                  ? "border-[var(--color-positive)]/60 focus:border-[var(--color-positive)]"
                   : available === false
-                    ? "border-red-500/60 focus:border-red-500"
+                    ? "border-[var(--color-critical)]/60 focus:border-[var(--color-critical)]"
                     : "border-line focus:border-accent"
               }`}
             />
@@ -211,9 +211,9 @@ export function OnboardingForm({
               onChange={(e) => setLanguage(e.target.value)}
               className="t-body w-full rounded-xl border border-line bg-black/25 px-4 py-3 text-ink outline-none focus:border-accent"
             >
-              <option value="en" className="bg-zinc-900">English</option>
-              <option value="hinglish" className="bg-zinc-900">Hinglish</option>
-              <option value="hi" className="bg-zinc-900">Hindi (हिन्दी)</option>
+              <option value="en" className="bg-raised text-ink">English</option>
+              <option value="hinglish" className="bg-raised text-ink">Hinglish</option>
+              <option value="hi" className="bg-raised text-ink">Hindi (हिन्दी)</option>
             </select>
           </div>
         </div>
@@ -235,7 +235,7 @@ export function OnboardingForm({
         </div>
 
         {errorMsg && (
-          <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm flex items-center gap-2">
+          <div className="p-4 rounded-xl border border-[var(--color-critical)]/30 bg-[var(--color-critical)]/10 text-[var(--color-critical)] text-sm flex items-center gap-2">
             <AlertCircle className="size-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>

@@ -10,7 +10,6 @@ import { getRandomTopic } from "@/lib/practice";
 import { requireOnboardedUser } from "@/lib/session";
 import { PersonaSelector } from "@/components/persona-selector";
 import { RouletteTopicSlot } from "@/components/roulette-topic-slot";
-import { SpinWheelButton } from "@/components/spin-wheel-button";
 import { startDiscussion } from "./actions";
 
 export const metadata: Metadata = { title: "Group discussion" };

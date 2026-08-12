@@ -100,17 +100,17 @@ export function VoiceVisualizer({
   const getStatusBadge = () => {
     switch (status) {
       case "listening":
-        return { label: "Listening...", icon: <Mic className="size-3.5 text-emerald-400" />, bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" };
+        return { label: "Listening...", icon: <Mic className="size-3.5 text-[var(--color-positive)]" />, bg: "bg-[var(--color-positive)]/10 border-[var(--color-positive)]/30 text-[var(--color-positive)]" };
       case "speaking":
-        return { label: `${counterpartName} Speaking`, icon: <Volume2 className="size-3.5 text-indigo-400 animate-pulse" />, bg: "bg-indigo-500/10 border-indigo-500/30 text-indigo-300" };
+        return { label: `${counterpartName} Speaking`, icon: <Volume2 className="size-3.5 text-accent animate-pulse" />, bg: "bg-accent/10 border-accent/30 text-accent" };
       case "interrupted":
-        return { label: "Interrupted!", icon: <Zap className="size-3.5 text-amber-400" />, bg: "bg-amber-500/10 border-amber-500/30 text-amber-300" };
+        return { label: "Interrupted!", icon: <Zap className="size-3.5 text-[var(--color-caution)]" />, bg: "bg-[var(--color-caution)]/10 border-[var(--color-caution)]/30 text-[var(--color-caution)]" };
       case "processing":
-        return { label: "Thinking...", icon: <Radio className="size-3.5 text-blue-400 animate-spin" />, bg: "bg-blue-500/10 border-blue-500/30 text-blue-300" };
+        return { label: "Thinking...", icon: <Radio className="size-3.5 text-ink-3 animate-spin" />, bg: "bg-white/[0.06] border-line text-ink-2" };
       case "connecting":
-        return { label: "Connecting...", icon: <Radio className="size-3.5 text-zinc-400 animate-spin" />, bg: "bg-zinc-500/10 border-zinc-500/30 text-zinc-300" };
+        return { label: "Connecting...", icon: <Radio className="size-3.5 text-ink-3 animate-spin" />, bg: "bg-white/[0.06] border-line text-ink-3" };
       default:
-        return { label: "Ready", icon: <Mic className="size-3.5 text-zinc-400" />, bg: "bg-zinc-500/10 border-zinc-500/30 text-zinc-300" };
+        return { label: "Ready", icon: <Mic className="size-3.5 text-ink-3" />, bg: "bg-white/[0.06] border-line text-ink-3" };
     }
   };
 
@@ -118,7 +118,7 @@ export function VoiceVisualizer({
 
   return (
     <div className={`w-full max-w-xl mx-auto ${className}`}>
-      <Surface material="frost" radius="lg" className="p-4 sm:p-5 border border-line/80 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+      <Surface material="frost" radius="lg" className="p-4 sm:p-5 border border-line/80 shadow-[var(--shadow-float)] relative overflow-hidden backdrop-blur-xl">
         {/* Top bar: Status indicator & toggle controls */}
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[12px] font-medium transition-all ${badge.bg}`}>
@@ -131,7 +131,7 @@ export function VoiceVisualizer({
               <button
                 type="button"
                 onClick={onInterrupt}
-                className="pressable inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[12px] hover:bg-amber-500/25 transition-colors"
+                className="pressable inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-caution)]/15 border border-[var(--color-caution)]/40 text-[var(--color-caution)] text-[12px] hover:bg-[var(--color-caution)]/25 transition-colors"
                 title="Interrupt AI and take floor"
               >
                 <Zap className="size-3" />
@@ -146,7 +146,7 @@ export function VoiceVisualizer({
                 className={`p-2 rounded-full border transition-all ${
                   isMicActive
                     ? "bg-accent/15 border-accent/40 text-accent hover:bg-accent/25"
-                    : "bg-red-500/15 border-red-500/40 text-red-400 hover:bg-red-500/25"
+                    : "bg-[var(--color-critical)]/15 border-[var(--color-critical)]/40 text-[var(--color-critical)] hover:bg-[var(--color-critical)]/25"
                 }`}
                 aria-label={isMicActive ? "Mute microphone" : "Unmute microphone"}
               >
@@ -158,7 +158,7 @@ export function VoiceVisualizer({
               <button
                 type="button"
                 onClick={onStop}
-                className="p-2 rounded-full bg-zinc-800/60 border border-zinc-700 text-zinc-400 hover:text-ink transition-colors"
+                className="p-2 rounded-full bg-white/[0.06] border border-line text-ink-3 hover:text-ink transition-colors"
                 aria-label="Stop audio session"
               >
                 <Square className="size-3.5 fill-current" />
@@ -168,7 +168,7 @@ export function VoiceVisualizer({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="p-2 rounded-full bg-zinc-800/60 border border-zinc-700 text-zinc-400 hover:text-ink transition-colors"
+              className="p-2 rounded-full bg-white/[0.06] border border-line text-ink-3 hover:text-ink transition-colors"
               title="Toggle Live Transcript View"
             >
               <MessageSquare className="size-3.5" />

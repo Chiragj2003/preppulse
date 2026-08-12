@@ -37,7 +37,10 @@ export default async function HomePage() {
         <h1 className="t-display rise max-w-[15ch] font-doodle text-5xl font-bold leading-[1.15] md:text-6xl lg:text-7xl [animation-delay:60ms]">
           Two minutes
           <br />
-          <span className="inline-block -rotate-2 bg-gradient-to-r from-accent via-indigo-400 to-purple-400 bg-clip-text text-transparent opacity-90 px-1">of talking</span>
+          {/* Emphasis by tone, not by gradient. A three-stop rainbow across a
+              hero is the clearest tell of generic AI-SaaS design, and it puts
+              indigo and purple into a palette that has exactly one accent. */}
+          <span className="inline-block -rotate-2 px-1 text-ink-3">of talking</span>
           <br />
           changes how
           <br />

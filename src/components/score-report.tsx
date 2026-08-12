@@ -47,44 +47,43 @@ export function ScoreReport({
       </header>
 
       {/* ── Compact Navigation Tabs ────────────────────────────────────────── */}
+      {/* Nested radii follow the physical rule: inner = outer minus padding.
+          The track is --radius-sm (14px) with 4px of padding, so the tabs are
+          --radius-xs (10px) and the curves stay concentric. */}
       <div className="flex justify-center border-b border-line/60 pb-1">
-        <div className="flex gap-2 p-1 rounded-2xl bg-zinc-900/60 border border-line/50">
-          <button
-            type="button"
-            onClick={() => setActiveTab("overview")}
-            className={`pressable px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === "overview"
-                ? "bg-accent text-white shadow-lg shadow-accent/20"
-                : "text-ink-4 hover:text-ink hover:bg-zinc-800/60"
-            }`}
-          >
-            Overview & Metrics
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("masterpiece")}
-            className={`pressable inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === "masterpiece"
-                ? "bg-accent text-white shadow-lg shadow-accent/20"
-                : "text-accent/90 hover:text-accent hover:bg-accent/10"
-            }`}
-          >
-            <Sparkles className="size-3.5" />
-            <span>100-Score Masterpiece</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("transcript")}
-            className={`pressable px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === "transcript"
-                ? "bg-accent text-white shadow-lg shadow-accent/20"
-                : "text-ink-4 hover:text-ink hover:bg-zinc-800/60"
-            }`}
-          >
-            Transcript & Fillers
-          </button>
+        <div
+          role="tablist"
+          aria-label="Report section"
+          className="flex gap-1 rounded-[var(--radius-sm)] border border-line/60 bg-black/25 p-1"
+        >
+          {(
+            [
+              ["overview", "Overview & Metrics", false],
+              ["masterpiece", "100-Score Masterpiece", true],
+              ["transcript", "Transcript & Fillers", false],
+            ] as const
+          ).map(([id, label, starred]) => {
+            const active = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(id)}
+                className={`pressable inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] px-4 py-2 text-[12.5px] font-medium ${
+                  active
+                    ? // text-void, not text-white: the accent is a light lavender,
+                      // so white on it fails contrast. Dark ink is legible.
+                      "bg-accent text-void shadow-[var(--shadow-accent)]"
+                    : "text-ink-3 hover:bg-white/[0.06] hover:text-ink"
+                }`}
+              >
+                {starred && <Sparkles className="size-3.5" />}
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -93,30 +92,30 @@ export function ScoreReport({
         <div className="space-y-8 animate-fadeIn">
           {/* Action Items: Landed vs Push */}
           <section className="grid gap-6 sm:grid-cols-2">
-            <Surface material="dense" radius="lg" className="p-6 border border-emerald-500/20 bg-emerald-500/5">
-              <div className="flex items-center gap-2 mb-4 text-emerald-400">
+            <Surface material="dense" radius="lg" className="p-6 border border-[var(--color-positive)]/20 bg-[var(--color-positive)]/5">
+              <div className="flex items-center gap-2 mb-4 text-[var(--color-positive)]">
                 <CheckCircle2 className="size-4 shrink-0" />
-                <h3 className="t-micro text-emerald-400 font-semibold tracking-wide">WHERE YOU LANDED IT</h3>
+                <h3 className="t-micro text-[var(--color-positive)] font-semibold tracking-wide">WHERE YOU LANDED IT</h3>
               </div>
               <ul className="space-y-3">
                 {evaluation.strengths.map((item, index) => (
                   <li key={index} className="flex gap-2.5 text-sm text-ink-2">
-                    <span className="mt-1.5 size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="mt-1.5 size-1.5 rounded-full bg-[var(--color-positive)] shrink-0" />
                     <span>{item}</span>
                   </li>
                 ))}
               </ul>
             </Surface>
 
-            <Surface material="dense" radius="lg" className="p-6 border border-amber-500/20 bg-amber-500/5">
-              <div className="flex items-center gap-2 mb-4 text-amber-400">
+            <Surface material="dense" radius="lg" className="p-6 border border-[var(--color-caution)]/20 bg-[var(--color-caution)]/5">
+              <div className="flex items-center gap-2 mb-4 text-[var(--color-caution)]">
                 <AlertTriangle className="size-4 shrink-0" />
-                <h3 className="t-micro text-amber-400 font-semibold tracking-wide">WHAT TO TRY NEXT</h3>
+                <h3 className="t-micro text-[var(--color-caution)] font-semibold tracking-wide">WHAT TO TRY NEXT</h3>
               </div>
               <ul className="space-y-3">
                 {evaluation.improvements.map((item, index) => (
                   <li key={index} className="flex gap-2.5 text-sm text-ink-2">
-                    <span className="mt-1.5 size-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="mt-1.5 size-1.5 rounded-full bg-[var(--color-caution)] shrink-0" />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -130,7 +129,7 @@ export function ScoreReport({
               <p className="t-micro">MEASURED PERFORMANCE</p>
               <span className="t-micro text-ink-4">Weighted Composite Calculation</span>
             </div>
-            <div className="divide-y divide-line/60 border border-line/60 rounded-2xl overflow-hidden bg-black/15">
+            <div className="divide-y divide-line/60 border border-line/60 rounded-[var(--radius-md)] overflow-hidden bg-black/15">
               {SCORE_DIMENSIONS.map((dimension, index) => (
                 <EvaluationMetric
                   key={dimension}
@@ -168,7 +167,7 @@ export function ScoreReport({
       {/* ── TAB 2: 100-SCORE MASTERPIECE SCRIPT ───────────────────────────── */}
       {activeTab === "masterpiece" && (
         <div className="space-y-6 animate-fadeIn">
-          <Surface material="frost" radius="lg" className="p-7 border border-accent/40 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+          <Surface material="frost" radius="lg" className="p-7 border border-accent/40 shadow-[var(--shadow-float)] relative overflow-hidden backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-line/40">
               <div>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-semibold mb-2">
@@ -184,7 +183,7 @@ export function ScoreReport({
                   <span>2:00 min (132 WPM)</span>
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  <ShieldCheck className="size-3.5 text-emerald-400" />
+                  <ShieldCheck className="size-3.5 text-[var(--color-positive)]" />
                   <span>264 Words</span>
                 </span>
               </div>
@@ -233,13 +232,13 @@ export function ScoreReport({
             <div className="p-4 rounded-xl border border-line/60 bg-black/20 flex flex-wrap items-center gap-4">
               <p className="t-micro text-ink-4">Detected Filler Words:</p>
               {evaluation.fillerWords.map((hit) => (
-                <span key={hit.word} className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono">
+                <span key={hit.word} className="px-3 py-1 rounded-full bg-[var(--color-caution)]/10 border border-[var(--color-caution)]/30 text-[var(--color-caution)] text-xs font-mono">
                   {hit.word} <strong className="text-white ml-1">x{hit.count}</strong>
                 </span>
               ))}
             </div>
           ) : (
-            <p className="t-meta text-emerald-400">✓ Zero filler words detected in this session!</p>
+            <p className="t-meta text-[var(--color-positive)]">✓ Zero filler words detected in this session!</p>
           )}
         </div>
       )}
@@ -269,7 +268,7 @@ function annotate(transcript: string, fillers: string[]) {
     index % 2 === 1 ? (
       <span
         key={index}
-        className="text-amber-300 font-semibold"
+        className="text-[var(--color-caution)] font-semibold"
         style={{
           textDecoration: "underline",
           textDecorationStyle: "dotted",

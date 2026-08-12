@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect, notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { EvaluationMetric, ScoreDisplay } from "@/components/ui/score";
 import { Surface } from "@/components/ui/surface";
 import { aggregateScores, runningAverage } from "@/lib/interview-scoring";
 import { requireUser } from "@/lib/session";
-import { AppError } from "@/lib/errors";
 import {
   ANSWER_DIMENSIONS,
   ANSWER_HINTS,

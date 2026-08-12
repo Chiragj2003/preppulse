@@ -130,7 +130,7 @@ export default async function DashboardPage() {
                   className="w-full rounded-t-sm bg-accent/40 transition-all duration-500 group-hover:bg-accent"
                   style={{ height: `${session.overallScore}%` }}
                 />
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-100 bg-black text-white text-xs py-1 px-2 rounded pointer-events-none">
+                <div className="t-numeric pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 rounded-[var(--radius-xs)] border border-line bg-raised px-2 py-1 text-[12px] text-ink opacity-0 shadow-[var(--shadow-near)] transition-opacity duration-[var(--dur-fast)] group-hover:opacity-100">
                   {session.overallScore}
                 </div>
               </div>
@@ -166,12 +166,19 @@ export default async function DashboardPage() {
             },
           ].map((room) => (
             <li key={room.title}>
+              {/* The material system, not hand-rolled glass. `.m-dense` already
+                  carries the blur, the masked specular hairline and the depth
+                  shadow; `.liftable` handles the hover rise. */}
               <Link
                 href={room.href}
-                className="group flex h-full flex-col justify-between gap-6 rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-white/[0.02] p-8 shadow-xl backdrop-blur-xl transition-all duration-500 hover:-translate-y-1 hover:border-accent/40 hover:from-white/10 hover:to-white/5 hover:shadow-2xl hover:shadow-accent/20"
+                className="material m-dense liftable group flex h-full flex-col justify-between gap-6 rounded-[var(--radius-lg)] p-7 hover:border-accent/40"
               >
-                <h3 className="t-heading transition-colors group-hover:text-accent font-display text-xl">{room.title}</h3>
-                <p className="t-body text-sm text-ink-3 group-hover:text-ink-2 transition-colors">{room.body}</p>
+                <h3 className="t-heading transition-colors duration-[var(--dur-base)] group-hover:text-accent">
+                  {room.title}
+                </h3>
+                <p className="t-body text-ink-3 transition-colors duration-[var(--dur-base)] group-hover:text-ink-2">
+                  {room.body}
+                </p>
               </Link>
             </li>
           ))}
@@ -194,7 +201,7 @@ export default async function DashboardPage() {
               <li key={session.id}>
                 <Link
                   href={getSessionHref(session)}
-                  className="group grid grid-cols-[1fr_auto] items-baseline gap-x-8 gap-y-1 p-5 mb-3 rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm transition-all duration-300 hover:scale-[1.01] hover:border-accent/30 hover:bg-accent/5 hover:shadow-lg"
+                  className="group grid grid-cols-[1fr_auto] items-baseline gap-x-8 gap-y-1 p-5 mb-3 rounded-[var(--radius-md)] border border-white/5 bg-white/[0.02] backdrop-blur-sm transition-all duration-300 hover:scale-[1.01] hover:border-accent/30 hover:bg-accent/5 hover:shadow-[var(--shadow-near)]"
                 >
                   <p className="t-body truncate text-ink-2 transition-colors group-hover:text-ink font-medium">
                     {session.prompt ?? "Practice session"}

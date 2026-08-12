@@ -21,7 +21,7 @@ export function KnowledgeBaseModal({ knowledgeBase }: { knowledgeBase: string | 
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6 transition-opacity">
-          <Surface material="liquid" radius="lg" className="relative w-full max-w-2xl overflow-hidden shadow-2xl rise">
+          <Surface material="liquid" radius="lg" className="relative w-full max-w-2xl overflow-hidden shadow-[var(--shadow-float)] rise">
             <button 
               onClick={() => setIsOpen(false)}
               className="absolute right-4 top-4 rounded-full p-2 text-ink-3 hover:bg-white/10 hover:text-ink transition-colors"

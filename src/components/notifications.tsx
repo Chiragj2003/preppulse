@@ -55,7 +55,7 @@ export function Notifications() {
 
       {isOpen && (
         <div className="absolute right-0 top-full mt-2 w-80 z-50">
-          <Surface material="liquid" radius="lg" className="overflow-hidden border border-white/10 shadow-xl">
+          <Surface material="liquid" radius="lg" className="overflow-hidden border border-white/10 shadow-[var(--shadow-lift)]">
             <div className="p-4 border-b border-line/50">
               <h3 className="t-heading text-sm">Notifications</h3>
             </div>

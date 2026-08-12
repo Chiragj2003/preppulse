@@ -43,7 +43,7 @@ export function ProgressChart({ series }: { series: DayPoint[] }) {
                 const data = payload[0].payload;
                 if (data.displayScore === null) return null;
                 return (
-                  <div className="rounded-xl border border-white/10 bg-void/80 p-3 backdrop-blur-xl shadow-xl">
+                  <div className="rounded-xl border border-white/10 bg-void/80 p-3 backdrop-blur-xl shadow-[var(--shadow-lift)]">
                     <p className="text-[12px] text-ink-3 mb-1">{data.date}</p>
                     <p className="text-[16px] font-display font-medium text-ink">Score: <span className="text-accent">{data.displayScore}</span></p>
                     <p className="text-[12px] text-ink-4 mt-1">{data.sessions} {data.sessions === 1 ? 'session' : 'sessions'}</p>

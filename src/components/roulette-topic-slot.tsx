@@ -129,7 +129,7 @@ export function RouletteTopicSlot({
           material="dense"
           radius="lg"
           refract
-          className="relative min-h-[160px] sm:min-h-[200px] flex items-center justify-center overflow-hidden p-7 sm:p-10 border border-line/80 shadow-2xl"
+          className="relative min-h-[160px] sm:min-h-[200px] flex items-center justify-center overflow-hidden p-7 sm:p-10 border border-line/80 shadow-[var(--shadow-float)]"
         >
           {/* Top-to-Down Slot Reel Motion */}
           <motion.div

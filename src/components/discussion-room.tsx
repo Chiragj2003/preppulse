@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Send, Square, Volume2, VolumeX, Sparkles } from "lucide-react";
+import { Send, Volume2, Sparkles } from "lucide-react";
 
 import { finishDiscussion, speak } from "@/app/discuss/actions";
 import { Button } from "@/components/ui/button";

@@ -32,7 +32,7 @@ export default async function ReportPage({
     return (
       <div className="mx-auto max-w-xl px-5 pt-32 pb-24 text-center">
         <Surface material="dense" radius="lg" refract className="p-8 sm:p-10">
-          <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+          <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-caution)]/10 border border-[var(--color-caution)]/30 text-[var(--color-caution)]">
             <AlertCircle className="size-7" />
           </div>
           <h1 className="t-title text-2xl">Session Report Unavailable</h1>
