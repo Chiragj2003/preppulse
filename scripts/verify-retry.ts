@@ -7,6 +7,9 @@
  * whole start-interview flow. Rather than wait for Google to be busy again,
  * fetch is stubbed to fail the way it failed in production, then recover — so
  * the assertion is about our backoff, not about their capacity today.
+ *
+ * The last check is the important one: when every Gemini model is exhausted,
+ * the call must land on Groq rather than reaching the user as an error.
  */
 import { z } from "zod";
 
@@ -68,13 +71,18 @@ async function run(label: string, setup: { failures: number; status: number }, e
   let detail: string;
   try {
     const result = await callGemini({
-      parts: [{ text: "ping" }],
+      // Only the stub sees this when Gemini answers. When the fallback fires it
+      // goes to the real Groq API, so it has to be a prompt Groq can satisfy.
+      parts: [{ text: 'Reply with this exact JSON object and nothing else: {"ok": true}' }],
       schema: Schema,
       operation: "verify_retry",
       userId: "verify-script",
     });
     passed = result.ok === true;
-    detail = `recovered after ${calls()} calls`;
+    detail =
+      setup.failures >= 99
+        ? `answered by Groq after ${calls()} Gemini calls`
+        : `recovered after ${calls()} Gemini calls`;
   } catch (error) {
     passed = false;
     detail = `threw after ${calls()} calls: ${error instanceof Error ? error.message : error}`;
@@ -104,8 +112,12 @@ async function main() {
     // A burst rate limit is also temporary.
     await run("429 rate limit, then success", { failures: 1, status: 429 }, true),
     // A bad key will fail identically however many times we ask, so it must
-    // fail fast rather than burn twelve calls discovering that.
-    await run("401 bad key fails immediately", { failures: 99, status: 401 }, false),
+    // fail fast rather than burn twelve calls discovering that — but it is
+    // still a transport failure, so Groq gets asked. That is the point.
+    await run("401 bad key fails over to Groq", { failures: 99, status: 401 }, true),
+    // Every Gemini model down, every attempt. The answer must still arrive,
+    // from the other provider, with the real Groq key.
+    await run("all Gemini models 503 → Groq", { failures: 99, status: 503 }, true),
   ];
 
   globalThis.fetch = realFetch;

@@ -442,6 +442,35 @@ demand"` often enough that treating it as fatal took down the whole
 start-interview flow. Failing fast on the rest matters equally — a wrong API key
 would otherwise spend twelve calls learning what the first response said.
 
+**Cross-provider fallback.** When every Gemini model is exhausted, the call goes
+to Groq rather than to the user as an error.
+
+```
+callGemini ──► gemini-3.6-flash ──► gemini-2.5-flash ──► gemini-flash-latest
+                  (3 attempts each, backoff between)
+                                   │ all exhausted
+                                   ▼
+                           tryGroqFallback
+                                   │
+              ┌────────────────────┼────────────────────┐
+       parts contain          isContentError        otherwise
+       inline_data (PDF)      (bad JSON, empty)         │
+              │                     │                   ▼
+          decline               decline            callGroq(...)
+     (Groq is text-only)   (our bug — keep it       recorded under the
+                            visible, don't          same operation name
+                            double its cost)
+```
+
+Both refusals are deliberate. `extractResume` sends PDF bytes natively, which
+Groq's chat API cannot accept, so resume extraction has no honest fallback. And
+a provider that answered with malformed JSON is reporting a prompt or schema
+bug, not an outage — failing over would hide it and pay twice.
+
+`lib/ai/retry.ts` holds the policy both clients share; `lib/ai/groq.ts` is the
+single Groq entry point, extracted from three duplicated copies in `score.ts`,
+`discussion.ts` and `topic-brief.ts`.
+
 **Auth.** `getSession()` is React-`cache`d per request. It re-throws Next's
 control-flow errors (`DYNAMIC_SERVER_USAGE`, `NEXT_REDIRECT`) rather than
 swallowing them; anything else is treated as signed-out so a database blip does
