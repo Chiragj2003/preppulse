@@ -22,7 +22,7 @@ import { getProfile, recordPractice } from "@/lib/practice";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { tokensForScore } from "@/lib/scoring";
 import { requireUserApi } from "@/lib/session";
-import type { InterviewerPersona } from "@/lib/types";
+import { MAX_ANSWER_SECONDS, MAX_TRANSCRIPT_CHARS, type InterviewerPersona } from "@/lib/types";
 
 export interface ActionError {
   code: AppErrorCode;
@@ -92,6 +92,12 @@ const StartInput = z.object({
   persona: z.enum(["friendly", "professional", "challenging", "stress"]),
   questionCount: z.coerce.number().int().min(3).max(15),
   role: z.string().trim().max(120).optional(),
+  // Chips from the setup screen. Trimmed and capped here rather than trusted
+  // from the client, since they go straight into a prompt.
+  focusAreas: z
+    .array(z.string().trim().min(1).max(48))
+    .max(6)
+    .default([]),
 });
 
 /**
@@ -106,6 +112,7 @@ export async function startInterview(formData: FormData) {
     persona: formData.get("persona"),
     questionCount: formData.get("questionCount"),
     role: formData.get("role") || undefined,
+    focusAreas: formData.getAll("focus").filter((v): v is string => typeof v === "string"),
   });
 
   await enforceRateLimit(user.id);
@@ -147,7 +154,12 @@ export async function startInterview(formData: FormData) {
       status: "in_progress",
       promptSnapshot: role,
       language: preferredLanguage,
-      config: { persona: input.persona, questionCount: input.questionCount, role },
+      config: {
+        persona: input.persona,
+        questionCount: input.questionCount,
+        role,
+        focusAreas: input.focusAreas,
+      },
     })
     .returning();
 
@@ -158,6 +170,7 @@ export async function startInterview(formData: FormData) {
     count: input.questionCount,
     role,
     background,
+    focusAreas: input.focusAreas,
     language: preferredLanguage,
   });
 
@@ -173,8 +186,18 @@ export async function startInterview(formData: FormData) {
 const AnswerInput = z.object({
   sessionId: z.string().uuid(),
   questionId: z.string().uuid(),
-  transcript: z.string().min(1).max(20_000),
-  durationSeconds: z.number().int().min(1).max(3600),
+  // Clamped rather than rejected: a transcript over the cap still contains a
+  // real answer, and throwing it away punishes the candidate for a limit that
+  // exists to protect the bill.
+  transcript: z
+    .string()
+    .min(1)
+    .transform((value) => value.slice(0, MAX_TRANSCRIPT_CHARS)),
+  durationSeconds: z
+    .number()
+    .int()
+    .min(1)
+    .transform((value) => Math.min(value, MAX_ANSWER_SECONDS)),
   inputMode: z.enum(["speech", "typed"]).default("speech"),
 });
 

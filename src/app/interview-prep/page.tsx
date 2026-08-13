@@ -17,7 +17,14 @@ export const metadata: Metadata = { title: "Interview prep" };
 export default async function InterviewPrepPage() {
   const user = await requireUser("/interview-prep");
   const profile = await getProfile(user.id);
-  const ready = Boolean(profile?.skillsDescription || profile?.resumeExtractedData);
+
+  // Named separately, because "we have something to interview you on" and "we
+  // have read your resume" are different facts. Collapsing them into one
+  // `ready` flag is what put a green "Ready" under a resume that had not been
+  // uploaded yet — true, but answering a question nobody asked.
+  const hasResume = Boolean(profile?.resumeExtractedData);
+  const hasDescription = Boolean(profile?.skillsDescription);
+  const ready = hasResume || hasDescription;
 
   return (
     <div className="mx-auto max-w-3xl px-5 pt-28 pb-24 sm:px-6">
@@ -46,11 +53,14 @@ export default async function InterviewPrepPage() {
         <section className="rise mt-16 border-t border-line pt-10 [animation-delay:200ms]">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div className="max-w-lg">
-              <p className="t-micro mb-4">Ready</p>
+              <p className="t-micro mb-4">
+                {hasResume ? "Resume read" : "Description saved"}
+              </p>
               <h2 className="t-heading">Run a mock round</h2>
               <p className="t-body mt-2 text-ink-3">
-                Pick an interviewer and how many questions. They&apos;re written for you before you
-                start.
+                {hasResume
+                  ? "Questions will come from your resume — the projects, tools and claims above. You pick which technologies they dig into."
+                  : "Questions will come from what you wrote above. Upload a resume too and they get sharper: real projects to ask about, and technologies to choose from."}
               </p>
             </div>
             <Link href="/interview" className="shrink-0">

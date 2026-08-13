@@ -75,6 +75,21 @@ export default async function InterviewReportPage({
   }
 
   const answeredQuestions = questions.filter((q) => byQuestion.has(q.id));
+
+  // Counted from the questions actually answered, not from what was requested
+  // at setup — the honest version of "we tested you on what you picked" is the
+  // one that reflects the round you finished, including the one you walked out
+  // of halfway through.
+  const focusCounts = new Map<string, number>();
+  for (const question of answeredQuestions) {
+    if (question.focusArea) {
+      focusCounts.set(question.focusArea, (focusCounts.get(question.focusArea) ?? 0) + 1);
+    }
+  }
+  const focusAreas = [...focusCounts.entries()]
+    .map(([area, count]) => ({ area, count }))
+    .sort((a, b) => b.count - a.count);
+
   const strongest = [...byQuestion.values()].sort((a, b) => b.best.overallScore - a.best.overallScore)[0];
   const weakest = [...byQuestion.values()].sort((a, b) => a.best.overallScore - b.best.overallScore)[0];
 
@@ -96,6 +111,21 @@ export default async function InterviewReportPage({
               ? "Competent, with clear places to sharpen."
               : "Plenty to work on — which is the point of practising."}
         </p>
+
+        {focusAreas.length > 0 && (
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+            <span className="t-micro mr-1">Tested on</span>
+            {focusAreas.map(({ area, count }) => (
+              <span
+                key={area}
+                className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[12px] font-medium text-accent"
+              >
+                {area}
+                <span className="ml-1.5 text-accent/60">×{count}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </header>
 
       <div className="rule mt-14" />
@@ -156,6 +186,11 @@ export default async function InterviewReportPage({
                   </span>
                   <span className="t-body flex-1 text-ink-2 transition-colors group-hover:text-ink">
                     {question.question}
+                    {question.focusArea && (
+                      <span className="ml-3 inline-block whitespace-nowrap rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 align-middle text-[12px] font-medium text-accent">
+                        {question.focusArea}
+                      </span>
+                    )}
                   </span>
                   {delta !== null && delta !== 0 && (
                     <span

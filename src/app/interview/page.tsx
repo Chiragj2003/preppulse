@@ -8,9 +8,32 @@ import { checkCanStart } from "@/lib/gate";
 import { getProfile } from "@/lib/practice";
 import { requireOnboardedUser } from "@/lib/session";
 import { INTERVIEWER_PERSONAS, PERSONA_BLURBS, PERSONA_LABELS } from "@/lib/types";
+import type { ResumeExtract } from "@/lib/types";
 import { startInterview } from "./actions";
+import { FocusPicker } from "./focus-picker";
 
 export const metadata: Metadata = { title: "Mock interview" };
+
+/**
+ * Everything the candidate has claimed they know, in one list.
+ *
+ * Skills and project tech are the same kind of thing to an interviewer, and
+ * they overlap heavily, so they're merged and deduped case-insensitively —
+ * "Postgres" listed under both skills and a project is one chip, not two.
+ */
+function technologiesFrom(resume: ResumeExtract | null | undefined): string[] {
+  if (!resume) return [];
+
+  const seen = new Map<string, string>();
+  for (const item of [...resume.skills, ...resume.projects.flatMap((p) => p.tech ?? [])]) {
+    const value = item.trim();
+    if (!value || value.length > 32) continue;
+    const key = value.toLowerCase();
+    if (!seen.has(key)) seen.set(key, value);
+  }
+
+  return [...seen.values()].slice(0, 24);
+}
 
 /**
  * Setup, not a wizard. One screen: who is interviewing you, for what, how long.
@@ -24,6 +47,7 @@ export default async function InterviewSetupPage() {
 
   const resume = profile?.resumeExtractedData;
   const ready = Boolean(resume || profile?.skillsDescription);
+  const technologies = technologiesFrom(resume);
 
   if (locked) {
     return (
@@ -139,6 +163,17 @@ export default async function InterviewSetupPage() {
             <p className="t-meta mt-2 text-ink-4">Ten runs about 10-15 minutes.</p>
           </div>
         </div>
+
+        {/* Focus */}
+        <fieldset>
+          <legend className="t-micro mb-2">What should they dig into?</legend>
+          <p className="t-meta mb-5 max-w-md text-ink-4">
+            {technologies.length > 0
+              ? "Pulled from your resume. Pick the ones you want tested — or add whatever the job description asks for."
+              : "Name the technologies you want tested. Anything you add here is what the technical questions will be about."}
+          </p>
+          <FocusPicker suggestions={technologies} />
+        </fieldset>
 
         <div className="flex flex-wrap items-center gap-6 border-t border-line pt-8">
           <SubmitButton variant="primary" size="lg">

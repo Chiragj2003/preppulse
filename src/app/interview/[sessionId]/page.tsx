@@ -49,6 +49,7 @@ export default async function InterviewRoomPage({
         position: q.position,
         question: q.question,
         kind: q.kind,
+        focusArea: q.focusArea,
         answeredScore: answered.get(q.id)?.overallScore ?? null,
       }))}
     />
