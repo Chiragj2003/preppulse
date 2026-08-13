@@ -54,6 +54,7 @@ export default async function DashboardPage() {
     : null;
 
   const doneToday = streak?.lastPracticeDate === new Date().toLocaleDateString("en-CA");
+  const interviewReady = Boolean(profile?.skillsDescription || profile?.resumeExtractedData);
 
   return (
     <div className="mx-auto max-w-5xl px-5 pt-28 pb-24 sm:px-6">
@@ -179,8 +180,20 @@ export default async function DashboardPage() {
       {/* ── Other Rooms: Features the user was looking for ───────────────── */}
       <section className="rise mt-16 [animation-delay:150ms]">
         <p className="t-micro mb-6">Other practice modes</p>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* The mock interview leads and takes a double-width cell. It used to
+            sit alone under an "Also" heading at the bottom of the page, which
+            is where you put a thing nobody is supposed to find — and it is the
+            one mode people arrive with a date in their calendar for. */}
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
+            {
+              href: interviewReady ? "/interview" : "/interview-prep",
+              title: "Mock Interview",
+              body: interviewReady
+                ? "Questions written from your own resume, scored one answer at a time. Pick the technologies you want tested."
+                : "Add your resume or a few lines about what you do, and rounds get built around your actual experience.",
+              wide: true,
+            },
             {
               href: "/practice?mode=quick",
               title: "Random Roll",
@@ -202,17 +215,24 @@ export default async function DashboardPage() {
               body: "Workplace scenarios like salary negotiation or angry customers.",
             },
           ].map((room) => (
-            <li key={room.title}>
+            <li key={room.title} className={room.wide ? "lg:col-span-2" : undefined}>
               {/* The material system, not hand-rolled glass. `.m-dense` already
                   carries the blur, the masked specular hairline and the depth
                   shadow; `.liftable` handles the hover rise. */}
               <Link
                 href={room.href}
-                className="material m-dense liftable group flex h-full flex-col justify-between gap-6 rounded-[var(--radius-lg)] p-7 hover:border-accent/40"
+                className={`material liftable group flex h-full flex-col justify-between gap-6 rounded-[var(--radius-lg)] p-7 hover:border-accent/40 ${
+                  room.wide ? "m-liquid border-accent/25" : "m-dense"
+                }`}
               >
-                <h3 className="t-heading transition-colors duration-[var(--dur-base)] group-hover:text-accent">
-                  {room.title}
-                </h3>
+                <div className="flex items-baseline justify-between gap-4">
+                  <h3 className="t-heading transition-colors duration-[var(--dur-base)] group-hover:text-accent">
+                    {room.title}
+                  </h3>
+                  {room.wide && (
+                    <ArrowUpRight className="size-4 shrink-0 text-ink-4 transition-all duration-[var(--dur-base)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-accent" />
+                  )}
+                </div>
                 <p className="t-body text-ink-3 transition-colors duration-[var(--dur-base)] group-hover:text-ink-2">
                   {room.body}
                 </p>
@@ -257,39 +277,9 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {/* ── Interview prep. Still secondary, even here. ──────────────────── */}
-      <section className="rise mt-20 border-t border-line pt-10 [animation-delay:220ms]">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-lg">
-            <p className="t-micro mb-4">Also</p>
-            <h2 className="t-heading">
-              {!profile?.skillsDescription && !profile?.resumeExtractedData
-                ? "Got an interview coming up?"
-                : "Mock Interview"}
-            </h2>
-            <p className="t-body mt-2 text-ink-3">
-              {!profile?.skillsDescription && !profile?.resumeExtractedData
-                ? "Add what you do and PrepPulse can build mock rounds around your actual experience."
-                : "Personalised questions written exactly for your background and resume."}
-            </p>
-          </div>
-          <Link
-            href={
-              !profile?.skillsDescription && !profile?.resumeExtractedData
-                ? "/interview-prep"
-                : "/interview"
-            }
-            className="group inline-flex shrink-0 items-center gap-2.5 text-[14.5px] text-ink-2 transition-colors hover:text-accent"
-          >
-            <span className="border-b border-line-bright pb-1 transition-colors group-hover:border-accent">
-              {!profile?.skillsDescription && !profile?.resumeExtractedData
-                ? "Set it up"
-                : "Start mock round"}
-            </span>
-            <ArrowUpRight className="size-3.5 transition-transform duration-[var(--dur-base)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Link>
-        </div>
-      </section>
+      {/* The mock-interview panel that used to live here has moved up into the
+          practice-modes grid. Two entry points to the same room meant the one
+          people found first was the one buried below the fold. */}
     </div>
   );
 }
