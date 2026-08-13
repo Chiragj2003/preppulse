@@ -811,6 +811,30 @@ Clamping rather than rejecting matters. A transcript over the cap still contains
 
 One rendering note worth keeping: satori draws `radial-gradient` with a hard edge, so a soft ambient wash comes out as a visible circle sitting on the card. Linear gradients render correctly.
 
+## D72. Transient provider failures are retried; permanent ones fail fast
+
+**Decision.** `callGemini` retries up to three times per model on 429, 5xx, timeouts and connection resets, backing off 0.8s / 1.6s / 3.2s, then falls through to the next model id. A 404 skips straight to the next model. Anything else — bad key, malformed JSON, schema mismatch — breaks out immediately.
+
+**Why.** The client only fell through on 404, so `503 "This model is currently experiencing high demand"` was fatal. That is a condition which clears in about a second, and it was taking down the entire start-interview flow. Falling through to another model id is a second real chance rather than a formality, because a different id has separate capacity.
+
+Failing fast on the rest matters just as much: a wrong API key would otherwise burn twelve calls and twenty seconds of backoff discovering something the first response already said.
+
+`npm run verify:retry` stubs the failures rather than waiting for Google to be busy — 503 recovers in 2 calls, two 503s in 3 calls after 2.4s of backoff, a 401 throws after 1.
+
+The first version of that script stubbed `fetch` wholesale, which also caught the Neon driver — it speaks HTTP too. The failure budget was being spent on database round-trips, so "two 503s" was really testing one. The stub now matches on the Gemini host.
+
+## D73. Starting an interview does not wait for the questions
+
+**Decision.** `startInterview` writes the session row and redirects. The room renders `PreparingRound`, which calls `prepareQuestions(sessionId)` and refreshes when it lands. Everything the generator needs already lives in `practice_sessions.config`.
+
+**Why.** Generating inside the action held a POST open for ten to twenty seconds behind a button with no feedback, and when Gemini answered 503 the action threw — which Next renders as a bare 500 page. The user lost a filled-in setup form to a transient condition.
+
+Splitting it fixes three things at once: the wait becomes something you watch happen rather than a hung button, a failure has a screen to be reported on and a retry button to sit beside, and closing the tab leaves a resumable session instead of nothing.
+
+`prepareQuestions` returns early if questions already exist, and the unique index on `(session_id, position)` is the backstop if two calls race. The rate limit moved with the model call — charging a unit for writing one row would make people hit the ceiling before the expensive work happens.
+
+The effect deliberately has no `cancelled` flag in its cleanup. React's development double-invoke would otherwise abandon the first run's result while the ref guard makes the second a no-op, leaving the screen spinning forever over questions that had already been written.
+
 ---
 
 # Open items

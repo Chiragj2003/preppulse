@@ -17,6 +17,7 @@
     "verify:resume": "tsx --env-file=.env scripts/verify-resume.ts",
     "verify:interview": "tsx --env-file=.env scripts/verify-interview.ts",
     "verify:focus": "tsx --env-file=.env scripts/verify-focus.ts",
+    "verify:retry": "tsx --env-file=.env scripts/verify-retry.ts",
     "db:seed": "tsx --env-file=.env src/db/seed.ts",
     "db:seed-demo": "tsx --env-file=.env src/db/seed-demo.ts",
     "auth:generate": "better-auth generate --config src/lib/auth.ts --output src/db/auth-schema.ts"
