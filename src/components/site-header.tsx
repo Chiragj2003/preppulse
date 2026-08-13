@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { LogoMark } from "@/components/ui/logo";
 import { getSession } from "@/lib/session";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
@@ -26,11 +27,17 @@ export async function SiteHeader() {
         <div className="flex items-center">
           <Link
             href="/"
-            className="group relative flex items-center gap-3"
+            className="pressable group flex items-center gap-2.5"
             aria-label="PrepPulse home"
           >
-            <Pulse />
-            <span className="font-display text-[17px] font-semibold tracking-[-0.03em] text-ink transition-colors group-hover:text-accent">
+            <span className="relative grid size-8 shrink-0 place-items-center">
+              <span
+                className="absolute inset-0 rounded-[10px] bg-accent/12 transition-colors duration-[var(--dur-base)] group-hover:bg-accent/20"
+                aria-hidden
+              />
+              <LogoMark className="relative size-[19px] text-accent" />
+            </span>
+            <span className="font-display text-[17px] font-semibold tracking-[-0.03em] text-ink transition-colors duration-[var(--dur-base)] group-hover:text-accent">
               PrepPulse
             </span>
           </Link>
@@ -42,6 +49,7 @@ export async function SiteHeader() {
               <div className="hidden items-center gap-1 sm:flex mr-2">
                 <Link href="/dashboard" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Dashboard</Link>
                 <Link href="/practice" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Practice</Link>
+                <Link href="/interview" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Interview</Link>
                 <Link href="/discuss" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Discuss</Link>
                 <Link href="/leaderboard" className="pressable rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10">Leaderboard</Link>
               </div>
@@ -70,23 +78,5 @@ export async function SiteHeader() {
   );
 }
 
-/**
- * The mark: a waveform pulse. Three strokes, drawn not imported, so it stays
- * crisp at any size and inherits the accent from the token layer.
- */
-function Pulse() {
-  return (
-    <span className="relative grid size-7 place-items-center">
-      <span className="absolute inset-0 rounded-[9px] bg-accent/12" />
-      <svg viewBox="0 0 24 24" className="relative size-4" fill="none" aria-hidden>
-        <path
-          d="M2 12h3.2l2.4-7.2 3.9 14.4 2.7-9.2 1.7 2h6.1"
-          stroke="var(--color-accent)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  );
-}
+// The mark now lives in components/ui/logo.tsx, so the header, the favicon and
+// the social card all draw the same geometry instead of three copies drifting.

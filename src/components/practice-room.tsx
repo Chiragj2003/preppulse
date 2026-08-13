@@ -269,7 +269,6 @@ export function PracticeRoom({
                   isMicActive={voiceSession.isMicActive}
                   isSpeaking={voiceSession.isSpeaking}
                   counterpartName="PrepPulse AI"
-                  onInterrupt={voiceSession.interrupt}
                   onStop={() => void submit()}
                 />
               </div>

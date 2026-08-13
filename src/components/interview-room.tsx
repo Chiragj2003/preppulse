@@ -10,15 +10,38 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { Surface } from "@/components/ui/surface";
 import { VoiceVisualizer } from "@/components/VoiceVisualizer";
 import { useVoiceSession } from "@/lib/useVoiceSession";
-import { PERSONA_LABELS, type InterviewerPersona, type QuestionKind } from "@/lib/types";
+import {
+  MAX_ANSWER_SECONDS,
+  PERSONA_LABELS,
+  type InterviewerPersona,
+  type QuestionKind,
+} from "@/lib/types";
 import { formatDuration } from "@/lib/utils";
 import { finishInterview, submitAnswer } from "@/app/interview/actions";
+
+/**
+ * A pause this long ends your answer.
+ *
+ * Longer than the discussion room's 1.1s on purpose: thinking mid-answer is
+ * normal in an interview and must not hand the floor back. Chrome finalises a
+ * result about a second after you stop, so the felt pause is nearer three
+ * seconds — which is what a real interviewer waits before speaking.
+ */
+const ANSWER_SILENCE_MS = 2400;
+
+/** Below this the model refuses to judge, so submitting would only waste a call. */
+const MIN_ANSWER_WORDS = 10;
+
+/** Warn from here, so the cut-off is never a surprise. */
+const WARN_FROM_SECONDS = MAX_ANSWER_SECONDS - 60;
 
 interface Question {
   id: string;
   position: number;
   question: string;
   kind: QuestionKind;
+  /** The technology this question tests, when the candidate asked for one. */
+  focusArea: string | null;
   answeredScore: number | null;
 }
 
@@ -77,10 +100,17 @@ export function InterviewRoom({
   );
   const [average, setAverage] = useState<number | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
 
   const question = questions[index];
   const answeredCount = Object.keys(scores).length;
   const startedAtRef = useRef(0);
+
+  // The room hands the turn over on a pause, which means the callback fires
+  // from inside the voice session. `sendTurn` resets the recogniser before it
+  // calls back, so the spoken text has to travel as an argument — reading the
+  // transcript again here would find it already cleared.
+  const sendRef = useRef<(spokenText?: string) => void>(() => {});
 
   const voiceSession = useVoiceSession({
     sessionId,
@@ -89,12 +119,25 @@ export function InterviewRoom({
     topic: role,
     language: language as "en" | "hinglish" | "hi",
     autoSave: true,
+    silenceMs: ANSWER_SILENCE_MS,
+    // Typing is a deliberate act with its own submit; only spoken answers end
+    // themselves.
+    autoSend: !typedMode,
+    onTurnComplete: (_speaker, text) => sendRef.current(text),
   });
 
-  // Timer while answering
+  // Timer while answering, with the hard cap enforced here as well as on the
+  // server. The server clamp protects the bill; this protects the candidate
+  // from discovering ten minutes later that nothing was listening.
   useEffect(() => {
     if (phase !== "answering") return;
-    const id = setInterval(() => setElapsed((v) => v + 1), 1000);
+    const id = setInterval(() => {
+      setElapsed((value) => {
+        const next = value + 1;
+        if (next >= MAX_ANSWER_SECONDS) sendRef.current();
+        return next;
+      });
+    }, 1000);
     return () => clearInterval(id);
   }, [phase]);
 
@@ -109,53 +152,80 @@ export function InterviewRoom({
     }
   }, [phase, question?.id, typedMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const send = useCallback(async () => {
-    const text = (typedMode ? voiceSession.speech.typed : voiceSession.transcript).trim();
-    if (!text) {
-      setError("We didn't catch an answer. Try again, or type it instead.");
-      setPhase("failed");
-      return;
-    }
+  const send = useCallback(
+    async (spokenText?: string) => {
+      const text = (
+        spokenText ??
+        (typedMode ? voiceSession.speech.typed : voiceSession.transcript)
+      ).trim();
 
-    voiceSession.stopSession();
-    setPhase("scoring");
-    setError(null);
+      const words = text.split(/\s+/).filter(Boolean).length;
 
-    const seconds = startedAtRef.current
-      ? Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
-      : Math.max(1, elapsed);
+      // Too little to judge. Don't burn a model call and don't drop the user
+      // into an error screen for clearing their throat — reopen the mic and
+      // say what's missing.
+      if (words < MIN_ANSWER_WORDS) {
+        if (typedMode) {
+          setHint("That's too short to score. Give it a couple more sentences.");
+          return;
+        }
+        setHint(
+          text
+            ? "That was too short to score — keep going, we're still listening."
+            : "Nothing came through yet. Start talking whenever you're ready.",
+        );
+        voiceSession.resumeListening();
+        return;
+      }
 
-    const result = await submitAnswer({
-      sessionId,
-      questionId: question.id,
-      transcript: text,
-      durationSeconds: seconds,
-      inputMode: typedMode ? "typed" : "speech",
-    });
+      voiceSession.stopSession();
+      setHint(null);
+      setPhase("scoring");
+      setError(null);
 
-    if (!result.ok) {
-      setError(result.error.message);
-      setPhase("failed");
-      return;
-    }
+      const seconds = startedAtRef.current
+        ? Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
+        : Math.max(1, elapsed);
 
-    setVerdict(result.data);
-    setScores((prev) => ({
-      ...prev,
-      [question.id]: Math.max(prev[question.id] ?? 0, result.data.overallScore),
-    }));
-    setAverage(result.data.runningAverage);
-    setPhase("verdict");
+      const result = await submitAnswer({
+        sessionId,
+        questionId: question.id,
+        transcript: text,
+        durationSeconds: Math.min(seconds, MAX_ANSWER_SECONDS),
+        inputMode: typedMode ? "typed" : "speech",
+      });
 
-    if (!typedMode) {
-      playChime(440, 150);
-      voiceSession.speakResponse(result.data.feedback, "interviewer");
-    }
-  }, [elapsed, question?.id, sessionId, typedMode, voiceSession]);
+      if (!result.ok) {
+        setError(result.error.message);
+        setPhase("failed");
+        return;
+      }
+
+      setVerdict(result.data);
+      setScores((prev) => ({
+        ...prev,
+        [question.id]: Math.max(prev[question.id] ?? 0, result.data.overallScore),
+      }));
+      setAverage(result.data.runningAverage);
+      setPhase("verdict");
+
+      if (!typedMode) {
+        playChime(440, 150);
+        voiceSession.speakResponse(result.data.feedback, "interviewer");
+      }
+    },
+    [elapsed, question?.id, sessionId, typedMode, voiceSession],
+  );
+
+  // The voice session calls back through this ref, so it always reaches the
+  // current closure rather than the one captured when the session started.
+  sendRef.current = (spokenText?: string) => void send(spokenText);
 
   function beginAnswering() {
     voiceSession.speech.reset();
     setElapsed(0);
+    setHint(null);
+    setError(null);
     startedAtRef.current = Date.now();
     setPhase("answering");
     void voiceSession.startSession();
@@ -168,6 +238,7 @@ export function InterviewRoom({
       voiceSession.speech.reset();
       setVerdict(null);
       setElapsed(0);
+      setHint(null);
       startedAtRef.current = 0;
       setPhase("asking");
     }
@@ -242,12 +313,17 @@ export function InterviewRoom({
         transition={{ type: "spring", bounce: 0, duration: 0.5 }}
         className="mt-12"
       >
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
           <p className="t-micro">
             Question {index + 1}
             <span className="mx-3 text-ink-4">/</span>
             <span className="text-ink-2">{question.kind}</span>
           </p>
+          {question.focusArea && (
+            <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[12px] font-medium text-accent">
+              {question.focusArea}
+            </span>
+          )}
           <button
             type="button"
             className="pressable text-ink-4 hover:text-ink-2"
@@ -282,18 +358,28 @@ export function InterviewRoom({
 
         {phase === "answering" && (
           <div>
-            <div className="flex items-center justify-between gap-6 mb-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 mb-6">
               <span className="t-numeric text-[34px] leading-none">{formatDuration(elapsed)}</span>
-              <Button
-                variant="glass"
-                icon={<Square className="size-3.5 fill-current" />}
-                onClick={() => void send()}
-              >
-                Done answering
-              </Button>
+              <p className="t-meta text-ink-4">
+                {elapsed >= WARN_FROM_SECONDS ? (
+                  <span style={{ color: "var(--color-caution)" }}>
+                    Wrapping up in {formatDuration(MAX_ANSWER_SECONDS - elapsed)} — finish your point.
+                  </span>
+                ) : typedMode ? (
+                  "Submit when you're done."
+                ) : (
+                  "Just stop talking when you're finished. Pausing hands it over."
+                )}
+              </p>
             </div>
 
             {!typedMode ? (
+              /* No stop control. The whole point is that you answer and stop,
+                 the way you would to a person — a "done answering" button
+                 turns every pause into a decision about whether to reach for
+                 the mouse. The manual submit below appears only if the
+                 recogniser can't run, which is the one case where stopping
+                 cannot be detected. */
               <VoiceVisualizer
                 status={voiceSession.status}
                 audioLevel={voiceSession.audioLevel}
@@ -301,8 +387,6 @@ export function InterviewRoom({
                 isMicActive={voiceSession.isMicActive}
                 isSpeaking={voiceSession.isSpeaking}
                 counterpartName={PERSONA_LABELS[persona]}
-                onInterrupt={voiceSession.interrupt}
-                onStop={() => void send()}
               />
             ) : (
               <div className="mt-8">
@@ -313,8 +397,34 @@ export function InterviewRoom({
                   placeholder="Type your answer..."
                   className="t-lead w-full resize-y rounded-[var(--radius-md)] border border-line bg-black/25 p-6 text-ink outline-none placeholder:text-ink-4 focus:border-accent"
                 />
+                <div className="mt-5">
+                  <Button
+                    variant="primary"
+                    icon={<Square className="size-3.5 fill-current" />}
+                    onClick={() => void send()}
+                  >
+                    Submit answer
+                  </Button>
+                </div>
               </div>
             )}
+
+            {!typedMode && !voiceSession.canAutoSend && (
+              <div className="mt-6">
+                <p className="t-meta mb-3 text-ink-2">
+                  Your browser can&apos;t hand the turn over on its own, so send it manually.
+                </p>
+                <Button
+                  variant="glass"
+                  icon={<Square className="size-3.5 fill-current" />}
+                  onClick={() => void send()}
+                >
+                  Done answering
+                </Button>
+              </div>
+            )}
+
+            {hint && <p className="t-meta mt-5 text-ink-2">{hint}</p>}
 
             <button
               type="button"
@@ -382,14 +492,15 @@ export function InterviewRoom({
               </div>
             </Surface>
 
-            <details className="group mt-4">
-              <summary className="t-micro cursor-pointer list-none py-3 transition-colors hover:text-ink-2">
-                Show a strong answer to this question
-              </summary>
-              <Surface material="liquid" radius="md" className="mt-2 p-6">
-                <p className="t-lead text-[16px] leading-[1.8] text-ink-2">{verdict.idealAnswer}</p>
-              </Surface>
-            </details>
+            {/* The model answer is deliberately withheld until the report.
+                Reading a perfect answer to question 3 and then answering
+                question 4 is how you end up practising recall instead of
+                thinking — you unconsciously reach for the phrasing you just
+                read. It's all waiting at the end, question by question, where
+                comparing it to what you actually said is the point. */}
+            <p className="t-meta mt-4 text-ink-4">
+              A model answer to this one is saved for the report at the end.
+            </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button variant="glass" icon={<RotateCcw className="size-4" />} onClick={beginAnswering}>

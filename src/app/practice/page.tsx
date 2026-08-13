@@ -64,11 +64,27 @@ export default async function PracticePage({
         </div>
       </div>
 
-      <p className="mt-16 text-center">
-        <Link href="/dashboard" className="t-micro transition-colors hover:text-ink-2">
-          Back to dashboard
-        </Link>
-      </p>
+      {/* The slab is the event, so these stay set as small metadata. They are
+          here at all because this is where people land expecting to see every
+          way to practise — and the mock interview was reachable only from the
+          dashboard. */}
+      <nav className="mt-16 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+        {[
+          { href: "/interview", label: "Mock interview" },
+          { href: "/discuss", label: "Group discussion" },
+          { href: "/discuss?mode=debate", label: "Debate" },
+          { href: "/rooms", label: "Role play" },
+          { href: "/dashboard", label: "Back to dashboard" },
+        ].map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="t-micro transition-colors hover:text-ink-2"
+          >
+            {link.label}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }

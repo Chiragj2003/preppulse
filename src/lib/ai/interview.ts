@@ -95,17 +95,22 @@ Return ONLY JSON:
 
 /* ── Question generation ────────────────────────────────────────────────── */
 
+/** Same tolerance as the answer schema — an unexpected `kind` string must not
+ *  cost the candidate the entire question set. */
 const QuestionsSchema = z.object({
   questions: z
     .array(
       z.object({
         question: z.string(),
-        kind: z.enum(["behavioural", "technical", "situational", "motivational"]),
-        rationale: z.string(),
+        kind: z
+          .enum(["behavioural", "technical", "situational", "motivational"])
+          .catch("behavioural"),
+        rationale: z.string().catch(""),
+        /** Which chosen technology this question tests, if any. Validated below. */
+        focusArea: z.string().nullish().catch(null),
       }),
     )
-    .min(1)
-    .max(20),
+    .min(1),
 });
 
 const PERSONA_VOICE: Record<InterviewerPersona, string> = {
@@ -134,8 +139,27 @@ export async function generateQuestions(input: {
   count: number;
   role: string;
   background: string;
+  /** Technologies the candidate chose at setup. Empty means cover the background broadly. */
+  focusAreas?: string[];
   language?: Language;
 }) {
+  const focus = (input.focusAreas ?? []).filter((area) => area.trim().length > 0);
+
+  // How many questions must land on the chosen technologies. Counted here, in
+  // code, rather than described to the model as "most" — a share the model
+  // interprets is a share it will quietly get wrong, and the candidate asked
+  // for these topics specifically.
+  const focusedCount = focus.length > 0 ? Math.max(focus.length, Math.ceil(input.count * 0.6)) : 0;
+
+  const focusRule =
+    focus.length > 0
+      ? `\nTHE CANDIDATE ASKED TO BE TESTED ON: ${focus.join(", ")}
+- At least ${Math.min(focusedCount, input.count)} of the ${input.count} questions must be squarely about those topics, and every one of them must be covered at least once.
+- Go past definitions. Ask about trade-offs, failure modes, and decisions they made — the things someone who has actually used it can answer and someone who has only read about it cannot.
+- The remaining questions cover the rest of their background as usual.
+- Set "focusArea" to the exact topic string from that list when a question tests it, and null otherwise. Copy the string exactly — it is matched, not read.\n`
+      : "";
+
   const result = await callGemini({
     parts: [
       {
@@ -147,7 +171,7 @@ The candidate's background:
 """
 ${input.background.slice(0, 6000)}
 """
-
+${focusRule}
 Write exactly ${input.count} interview questions for this specific person.
 
 Rules:
@@ -161,7 +185,7 @@ Rules:
 ${LANGUAGE_NOTE[input.language ?? "en"]}
 
 Return ONLY JSON:
-{"questions":[{"question":string,"kind":"behavioural"|"technical"|"situational"|"motivational","rationale":string}]}`,
+{"questions":[{"question":string,"kind":"behavioural"|"technical"|"situational"|"motivational","rationale":string,"focusArea":string|null}]}`,
       },
     ],
     schema: QuestionsSchema,
@@ -172,25 +196,67 @@ Return ONLY JSON:
     maxOutputTokens: 4096,
   });
 
+  // The tag is matched against what the candidate actually chose rather than
+  // trusted. A model that invents a focus area, or tags a topic nobody asked
+  // for, would otherwise turn a countable promise back into a vague one.
+  const allowed = new Map(focus.map((area) => [area.toLowerCase(), area]));
+
   return result.questions.slice(0, input.count).map((q, index) => ({
     position: index,
     question: q.question,
     kind: q.kind as QuestionKind,
     rationale: q.rationale,
+    focusArea: q.focusArea ? (allowed.get(q.focusArea.trim().toLowerCase()) ?? null) : null,
   }));
 }
 
 /* ── Per-answer analysis ────────────────────────────────────────────────── */
 
+/**
+ * Be liberal in what you accept from a model.
+ *
+ * The strict version of this schema rejected a whole answer whenever Gemini
+ * returned four strengths instead of three, or "85" instead of 85 — and a
+ * rejected answer means the candidate loses work they just spoke for two
+ * minutes. Formatting variance is the model's normal behaviour, not an error
+ * worth destroying user data over.
+ *
+ * Counts are trimmed after parsing instead of being enforced during it.
+ */
+const looseNumber = z.preprocess((value) => {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}, z.number());
+
+/** Accepts a string array, a bare string, or objects carrying a text field. */
+const looseStringArray = z.preprocess((value) => {
+  const items = Array.isArray(value) ? value : value == null ? [] : [value];
+  return items
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        const candidate = record.text ?? record.point ?? record.value ?? record.description;
+        if (typeof candidate === "string") return candidate;
+      }
+      return "";
+    })
+    .filter((s) => s.trim().length > 0);
+}, z.array(z.string()));
+
 const AnswerSchema = z.object({
-  content: z.number(),
-  clarity: z.number(),
-  relevance: z.number(),
-  structure: z.number(),
-  feedback: z.string(),
-  strengths: z.array(z.string()).min(1).max(3),
-  improvements: z.array(z.string()).min(1).max(3),
-  idealAnswer: z.string(),
+  content: looseNumber,
+  clarity: looseNumber,
+  relevance: looseNumber,
+  structure: looseNumber,
+  feedback: z.string().catch(""),
+  strengths: looseStringArray,
+  improvements: looseStringArray,
+  idealAnswer: z.string().catch(""),
 });
 
 /**
@@ -258,7 +324,10 @@ Return ONLY JSON:
     userId: input.userId,
     sessionId: input.sessionId,
     temperature: 0.3,
-    maxOutputTokens: 2048,
+    // Headroom. A truncated response is invalid JSON, which fails at
+    // JSON.parse before the schema ever sees it — and the ideal answer is the
+    // longest field, so it is what gets cut first.
+    maxOutputTokens: 3072,
   });
 
   const scores: AnswerScores = {
@@ -268,12 +337,18 @@ Return ONLY JSON:
     structure: clamp(verdict.structure),
   };
 
+  // Trimmed here rather than enforced in the schema, so an over-eager model
+  // costs the candidate nothing.
+  const strengths = verdict.strengths.slice(0, 3);
+  const improvements = verdict.improvements.slice(0, 3);
+
   return {
     scores,
     overallScore: weightedAnswerScore(scores),
-    feedback: verdict.feedback,
-    strengths: verdict.strengths,
-    improvements: verdict.improvements,
+    feedback: verdict.feedback || "That answer has been scored — see the breakdown below.",
+    strengths: strengths.length > 0 ? strengths : ["You gave a complete answer to the question."],
+    improvements:
+      improvements.length > 0 ? improvements : ["Add one concrete example with a result."],
     idealAnswer: verdict.idealAnswer,
   };
 }

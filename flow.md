@@ -151,27 +151,31 @@ sequenceDiagram
 
     rect rgb(30,30,38)
     Note over U,D: Once, before question one
-    U->>S: persona, role, question count
-    S->>A: startInterview
+    U->>S: persona, role, question count, focus technologies
+    Note over S: chips come from the candidate's own<br/>resume skills + project tech, plus free entry
+    S->>A: startInterview (focus[] as repeated form fields)
     A->>D: read profile (resume JSON and/or written skills)
-    A->>D: INSERT practice_sessions (config: persona, count, role)
-    A->>GM: generate ALL N questions from this background
-    GM-->>A: questions + rationale each
-    A->>D: INSERT interview_questions (position 0..N-1)
+    A->>D: INSERT practice_sessions (config: persona, count, role, focusAreas)
+    A->>A: focusedCount = max(len(focus), ceil(N * 0.6)) — computed here
+    A->>GM: generate ALL N questions, >= focusedCount on the chosen topics<br/>each tagged with which topic it tests
+    GM-->>A: questions + rationale + focusArea each
+    A->>A: validate focusArea against the chosen list (invented tags dropped)
+    A->>D: INSERT interview_questions (position 0..N-1, focus_area)
     A-->>U: redirect /interview/:id
     end
 
     loop for each question
-        U->>U: answer aloud (or typed)
+        U->>U: answer aloud — pausing ends the turn, no button
+        Note over U: 10-minute cap; warning from 9:00
         U->>A: submitAnswer(questionId, transcript)
-        A->>A: enforceRateLimit
+        A->>A: enforceRateLimit; clamp duration + transcript to the cap
         A->>GM: score content/clarity/relevance/structure<br/>+ feedback + STAR ideal answer
         GM-->>A: verdict
         A->>A: weightedAnswerScore — computed here
         A->>D: INSERT interview_answers (attempt = n+1)
         A->>D: SELECT all answers for session
         A->>A: runningAverage — best attempt per question
-        A-->>U: verdict + running average + delta vs first attempt
+        A-->>U: score + feedback + strengths/fixes<br/>(ideal answer withheld until the report)
         alt Retry
             U->>A: submitAnswer again (attempt + 1)
             Note over A: the better attempt wins;<br/>the first is kept for the delta
@@ -182,6 +186,7 @@ sequenceDiagram
     A->>A: aggregateScores — best attempt per question
     A->>D: UPDATE session completed, recordPractice
     A-->>U: redirect /interview/:id/report
+    Note over U: report shows every ideal answer,<br/>plus "Tested on: Postgres x2, Kubernetes x2"
 ```
 
 **Why the question set is fixed upfront:** the session stays resumable, and the
@@ -189,6 +194,20 @@ interview cannot drift toward whatever the candidate happens to be good at.
 
 **Why retries take the max:** averaging every attempt would make the Retry
 button lower your score for using it.
+
+**Why the focus tag is validated, not trusted:** "the questions will
+concentrate on what you picked" is only a real promise if it can be counted.
+The model declares a topic per question; code checks it against the list the
+candidate actually chose and drops anything invented. Coverage is then a number
+— shown as a chip on the question and summarised on the report.
+
+**Why the ideal answer waits:** reading a perfect answer to question 3 and then
+answering question 4 trains recall, not thinking. It is generated immediately
+(same cost either way) and stored, but only surfaced at the end where comparing
+it to what you said is the point.
+
+**How a turn ends:** silence in the *transcript*, not silence on the
+microphone. See §10.
 
 ---
 
@@ -413,6 +432,29 @@ not blank the page.
 **Ownership.** Every session read is scoped by `userId` as well as `id`. A
 session id alone is never sufficient.
 
+**Turn-taking.** `useVoiceSession` ends a turn when the *transcript* stops
+growing, not when the microphone goes quiet.
+
+```
+recogniser emits a word ──► effect re-runs ──► clearTimeout, start a new one
+                                                        │
+                                 no new words for silenceMs
+                                                        │
+                                                 sendTurn(text)
+```
+
+Mic energy is still sampled, but only for the level meter and for barge-in
+(talking over the AI reclaims the floor above `BARGE_IN_LEVEL`). Deciding
+end-of-turn from energy fails in both directions: background noise means the
+level never drops, so the turn never ends; a mid-sentence breath means it does,
+so half an answer gets submitted. The recogniser already applies its own noise
+handling, so reading its output is both simpler and more accurate.
+
+`silenceMs` is 1.1s for discussion (the gap a person leaves before speaking) and
+2.4s in the interview room, where thinking mid-answer is normal. `canAutoSend`
+reports whether the hands-free path can work at all; only when it is false does
+a manual submit appear.
+
 ---
 
 ## 11. Route map
@@ -426,9 +468,9 @@ session id alone is never sufficient.
 | `/practice/[id]` | required | Timer, waveform, transcript |
 | `/practice/[id]/report` | required | Coaching, then measurements |
 | `/interview-prep` | required | Skills text and/or resume upload |
-| `/interview` | required | Persona, role, question count |
-| `/interview/[id]` | required | One question at a time, verdict each |
-| `/interview/[id]/report` | required | Aggregate + question by question |
+| `/interview` | required | Persona, role, question count, focus technologies |
+| `/interview/[id]` | required | One question at a time, hands-free, score each |
+| `/interview/[id]/report` | required | Aggregate, coverage, every ideal answer |
 | `/discuss` | required | GD or debate setup (renders a paywall if locked) |
 | `/discuss/[id]` | required | Live room |
 | `/rooms` | required | Conversation & scenario role-plays |
@@ -438,6 +480,8 @@ session id alone is never sufficient.
 | `/pricing/checkout` | required | Dummy gateway |
 | `/s/[slug]` | **public** | Opt-in share card — score only, no transcript |
 | `/api/auth/[...all]` | — | Better Auth |
+| `/sitemap.xml`, `/robots.txt` | public | Generated from `env.appUrl` |
+| `/opengraph-image`, `/apple-icon`, `/icon.svg` | public | Generated from the shared logo geometry |
 
 `/s/[slug]` is the only public authenticated-data route. It is reachable solely
 via an unguessable opt-in slug and deliberately shows a partial record.
@@ -455,6 +499,15 @@ npm run build      # NEVER while dev is running - both write .next
 
 npm run db:generate && npm run db:migrate
 npm run db:seed    # idempotent: topics and plans
+```
+
+Three scripts check the AI paths against the live providers, because their
+failures are the ones unit tests cannot see:
+
+```bash
+npm run verify:resume     # builds a PDF by hand, checks nothing is invented
+npm run verify:interview  # scores a long rambling answer 3x (the JSON bug)
+npm run verify:focus      # proves picked technologies steer the question set
 ```
 
 Tests cover the maths that decides someone's score or what they've paid for:

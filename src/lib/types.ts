@@ -126,6 +126,19 @@ export const PERSONA_BLURBS: Record<InterviewerPersona, string> = {
   stress: "Interrupts, pushes back, and tests how you hold up.",
 };
 
+/**
+ * The hard ceiling on a single interview answer.
+ *
+ * No question is worth ten minutes of talking, so past this the recording is
+ * not an answer — it's a live microphone someone walked away from, spending
+ * Gemini tokens on a transcript nobody will read. It lives here, not in the
+ * server action, so the room and the server enforce the same number: the room
+ * stops the clock politely, the server clamps whatever it is handed.
+ */
+export const MAX_ANSWER_SECONDS = 600;
+/** Roughly ten minutes of fast speech, with room to spare. */
+export const MAX_TRANSCRIPT_CHARS = 12_000;
+
 /** The four things an interview answer is judged on. All 0-100. */
 export const ANSWER_DIMENSIONS = ["content", "clarity", "relevance", "structure"] as const;
 export type AnswerDimension = (typeof ANSWER_DIMENSIONS)[number];
@@ -185,6 +198,8 @@ export interface SessionConfig {
   persona?: InterviewerPersona;
   questionCount?: number;
   role?: string;
+  /** Technologies the candidate asked to be tested on. Empty means "cover my background broadly". */
+  focusAreas?: string[];
   /** Debate: the side the user argues. The AI automatically takes the other. */
   userStance?: "for" | "against";
   personaIds?: string[];

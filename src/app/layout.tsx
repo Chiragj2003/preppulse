@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Geist, Geist_Mono, Caveat } from "next/font/google";
 
 import { SiteHeader } from "@/components/site-header";
+import { env } from "@/lib/env";
 import "./globals.css";
 
 /**
@@ -25,13 +26,52 @@ const sans = Geist({ variable: "--font-geist-sans", subsets: ["latin"], display:
 const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], display: "swap" });
 const doodle = Caveat({ variable: "--font-caveat", subsets: ["latin"], display: "swap" });
 
+const title = "PrepPulse — speak better, one topic a day";
+const description =
+  "Roll a topic you didn't see coming. Talk for two minutes. Find out exactly where you landed it, where you rambled, and where you filled. Mock interviews from your own resume, group discussions and debates against AI personas.";
+
 export const metadata: Metadata = {
-  title: {
-    default: "PrepPulse — speak better, one topic a day",
-    template: "%s — PrepPulse",
+  // Without a metadataBase, Next resolves every relative OG/Twitter image
+  // against localhost and warns at build. It is derived, not hardcoded, so
+  // preview deployments advertise themselves rather than production.
+  metadataBase: new URL(env.appUrl),
+  title: { default: title, template: "%s — PrepPulse" },
+  description,
+  applicationName: "PrepPulse",
+  keywords: [
+    "communication practice",
+    "mock interview",
+    "AI interview practice",
+    "group discussion practice",
+    "public speaking practice",
+    "extempore",
+    "debate practice",
+    "resume based interview questions",
+    "spoken English practice",
+    "placement preparation",
+  ],
+  authors: [{ name: "Chirag" }],
+  creator: "Chirag",
+  openGraph: {
+    type: "website",
+    siteName: "PrepPulse",
+    title,
+    description,
+    url: env.appUrl,
+    locale: "en_IN",
   },
-  description:
-    "Roll a topic you didn't see coming. Talk for two minutes. Find out exactly where you landed it, where you rambled, and where you filled.",
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
+  alternates: { canonical: "/" },
+  category: "education",
 };
 
 export const viewport: Viewport = {

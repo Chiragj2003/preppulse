@@ -283,6 +283,64 @@ persona ids for debate. One nullable column per setting would mean a migration
 for every new mode and a table that is mostly nulls.
 </details>
 
+<details>
+<summary><b>D6. ⭐</b> The candidate picks technologies at setup. How do you know the questions actually cover them?</summary>
+
+Because it is counted, not hoped for. The prompt makes the model tag each
+question with a `focusArea` naming which chosen topic it tests; code validates
+that tag against the list the candidate selected and drops anything invented.
+Coverage becomes a number — shown as a chip on the question, summarised on the
+report as "Tested on: Postgres ×2, Kubernetes ×2", and asserted by
+`npm run verify:focus` (6/8 tagged, 3/3 areas, baseline clean).
+
+The instructive part is the first attempt. That script searched the question
+text for the chosen words, and failed a set that was entirely on topic: a
+question about re-architecting a write path under lock contention *is* a
+system-design question and never contains the words "system design". Substring
+matching measures vocabulary, not subject matter. This is B1 again — the
+countable thing was "did the model say this question is about X", not "does the
+text contain X".
+</details>
+
+<details>
+<summary><b>D7.</b> Where do the suggested technologies come from?</summary>
+
+The candidate's own resume — skills plus project tech, merged and deduped
+case-insensitively — with free entry on top.
+
+Not a curated list of frameworks, which would be wrong for most people and
+stale within a year. The only technologies worth being interviewed on are the
+ones you claimed; the free entry exists because the thing you most need to
+practise is often on the job description rather than on your CV.
+</details>
+
+<details>
+<summary><b>D8. ⭐</b> Why is the ideal answer generated on every answer but not shown until the end?</summary>
+
+Reading a perfect answer to question 3 and then answering question 4 trains
+recall rather than thinking — the phrasing you just read comes back out of your
+mouth, and the score measures your short-term memory instead of your ability.
+
+It is still generated immediately because it costs one call either way and the
+report needs it. The report is where it belongs: next to what you actually
+said, question by question, where the comparison is the point.
+</details>
+
+<details>
+<summary><b>D9.</b> A single answer is capped at ten minutes. Why enforce it in two places?</summary>
+
+They protect different things. The room stops the clock and submits at the cap
+so the candidate never discovers ten minutes later that nothing was listening.
+The server clamps `durationSeconds` and truncates the transcript because the
+client can be edited, and past ten minutes the recording is not an answer — it
+is a live microphone someone walked away from, spending tokens on a transcript
+nobody will read.
+
+Note it *clamps* rather than rejects. A transcript over the cap still contains a
+real answer, and throwing it away punishes the candidate for a limit that exists
+to protect costs.
+</details>
+
 ---
 
 ## E. Group discussion & debate
@@ -640,6 +698,94 @@ even in a portfolio.
 
 ---
 
+## Fc. Voice & turn-taking
+
+<details>
+<summary><b>Fc1. ⭐⭐</b> How does the app know a user has finished speaking?</summary>
+
+By watching the **transcript**, not the microphone. Every word the recogniser
+emits re-runs an effect that clears and restarts a `silenceMs` timer; when the
+words stop, the timer survives and the turn is handed over.
+
+The obvious implementation — sample mic energy, fire after N ms below a
+threshold — was the original, and it fails in both directions:
+
+- **Background noise:** a fan, traffic, a TV next door. The level never drops
+  far enough, so the turn *never ends*. The user is stuck holding a floor
+  nobody will take.
+- **A mid-sentence breath:** the level *does* drop. The turn ends early and half
+  an answer gets submitted.
+
+Both land on the user as "the app ignored me", which is the worst possible
+failure for a speaking app. The recogniser already answers the question that
+matters — *have new words arrived?* — after applying its own noise handling,
+which is far better than a threshold on raw energy. Reading its output is both
+simpler and more accurate, and needs no microphone permission beyond what the
+recogniser already holds.
+
+Mic energy is still sampled, for the level meter and for barge-in.
+</details>
+
+<details>
+<summary><b>Fc2.</b> Why is `silenceMs` different in the interview room?</summary>
+
+1.1s in discussion, 2.4s in interviews. Thinking mid-answer is normal in an
+interview and must not cost you the floor; in a group discussion, a 2.4s gap is
+long enough that the room feels dead.
+
+Chrome finalises a result about a second after you stop, so the felt pause in an
+interview is nearer three seconds — roughly what a real interviewer waits before
+speaking.
+</details>
+
+<details>
+<summary><b>Fc3. ⭐</b> The interview room has no "done answering" button. Isn't that a trap if detection fails?</summary>
+
+It would be, which is why the fallback is conditional rather than absent.
+`canAutoSend` reports whether the hands-free path can work at all — speech
+recognition supported, mic not blocked — and a manual submit renders only when
+it is false.
+
+The reasoning: a permanent stop button turns every natural pause into a decision
+about whether to reach for the mouse, which is exactly what stops an interview
+from feeling like an interview. An escape hatch that appears precisely when the
+primary path cannot work costs nothing; one that is always visible teaches
+everyone that pausing doesn't work.
+
+The "Cut in" button was deleted for a related reason: it was a control for
+something that already happens. Talk over the AI and the mic level crosses the
+barge-in threshold — the floor is already yours. A control that duplicates a
+behaviour teaches people the behaviour doesn't exist.
+</details>
+
+<details>
+<summary><b>Fc4.</b> Why does the spoken text travel as a callback argument instead of being read from the hook?</summary>
+
+Because `sendTurn` resets the recogniser *before* invoking `onTurnComplete`. A
+handler that re-read `voiceSession.transcript` would find it already cleared and
+bail with "we didn't catch an answer" — which is precisely the bug that made the
+first version of auto-send appear to do nothing.
+
+The room also calls back through a ref (`sendRef.current`) rather than a
+captured closure, so the handler always reaches current state rather than
+whatever was true when the session started.
+</details>
+
+<details>
+<summary><b>Fc5.</b> Under 10 words, the model refuses to score. What does the room do with a 3-word utterance?</summary>
+
+Nothing costly. It checks the word count *before* submitting, reopens the mic
+via `resumeListening()`, and says so — "that was too short to score, keep going,
+we're still listening".
+
+Sending it would burn a model call to receive an error, then drop the user onto
+a failure screen for clearing their throat. Every path out of `processing` calls
+`resumeListening()` for the same reason: without it, a failed or empty turn
+leaves the session stuck with a live mic and no way forward.
+</details>
+
+---
+
 ## F. Design system
 
 <details>
@@ -873,6 +1019,7 @@ Rate yourself honestly on each area:
 | Architecture & layering | | | |
 | Scoring philosophy | | | |
 | Interview engine | | | |
+| Voice & turn-taking | | | |
 | GD & debate | | | |
 | Conversation & scenarios | | | |
 | Admin & cost | | | |
@@ -885,7 +1032,7 @@ The middle column is the one interviews test. If you can state a decision but
 not the alternative you rejected, go back to `decisions.md` — every entry names
 what was rejected and why.
 
-**The five to have ready cold:**
+**The six to have ready cold:**
 
 1. **B1** — countable vs judgement. The governing rule of the codebase, and the
    best thing to lead with.
@@ -897,6 +1044,9 @@ what was rejected and why.
    entitlements were never scattered through the screens.
 5. **Ea1** — two whole modes shipped with no new engine, because a
    conversation is a turn loop and one already existed.
+6. **Fc1** — end-of-turn is read off the transcript, not the microphone,
+   because a volume threshold fails in both directions and both failures read
+   to the user as being ignored.
 
 **If you only remember one sentence:** *anything countable is counted in code;
 only judgements go to a model.* Almost every other decision in this project

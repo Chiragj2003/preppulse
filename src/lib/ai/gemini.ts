@@ -86,7 +86,14 @@ export async function callGemini<T>(options: CallOptions<T>): Promise<T> {
 
       const parsed = options.schema.safeParse(JSON.parse(text));
       if (!parsed.success) {
-        throw new Error(`Gemini returned unexpected JSON: ${parsed.error.issues[0]?.message}`);
+        // Name the field. "Invalid input" on its own is undiagnosable, and this
+        // is the one error that reaches a user mid-interview.
+        const detail = parsed.error.issues
+          .slice(0, 3)
+          .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+          .join("; ");
+        console.error("[gemini] schema mismatch", detail, text.slice(0, 400));
+        throw new Error(`Gemini returned unexpected JSON — ${detail}`);
       }
 
       await recordUsage({

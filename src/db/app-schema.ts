@@ -248,6 +248,16 @@ export const interviewQuestions = pgTable(
     kind: questionKindEnum("kind").notNull().default("behavioural"),
     /** Why this question was chosen for this candidate — shown in the report. */
     rationale: text("rationale"),
+    /**
+     * Which technology from the candidate's setup selection this question
+     * tests, tagged by the model and validated against the chosen list.
+     *
+     * It exists so "the questions will concentrate on what you picked" is a
+     * countable claim rather than a hope: the coverage is checked in code
+     * before the interview starts, and the tag is shown on the question so the
+     * candidate can see it was honoured.
+     */
+    focusArea: text("focus_area"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("interview_questions_slot_unique").on(table.sessionId, table.position)],
