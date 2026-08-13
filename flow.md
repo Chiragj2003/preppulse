@@ -156,12 +156,17 @@ sequenceDiagram
     S->>A: startInterview (focus[] as repeated form fields)
     A->>D: read profile (resume JSON and/or written skills)
     A->>D: INSERT practice_sessions (config: persona, count, role, focusAreas)
+    A-->>U: redirect /interview/:id — does NOT wait for questions
+    Note over U: PreparingRound renders; the wait is<br/>watched, not hidden behind a hung button
+    U->>A: prepareQuestions(sessionId)
+    A->>A: return early if questions already exist
     A->>A: focusedCount = max(len(focus), ceil(N * 0.6)) — computed here
     A->>GM: generate ALL N questions, >= focusedCount on the chosen topics<br/>each tagged with which topic it tests
+    Note over GM: 503 "high demand" is retried 3x with backoff,<br/>then the next model id
     GM-->>A: questions + rationale + focusArea each
     A->>A: validate focusArea against the chosen list (invented tags dropped)
     A->>D: INSERT interview_questions (position 0..N-1, focus_area)
-    A-->>U: redirect /interview/:id
+    A-->>U: router.refresh() — the room renders
     end
 
     loop for each question
@@ -191,6 +196,12 @@ sequenceDiagram
 
 **Why the question set is fixed upfront:** the session stays resumable, and the
 interview cannot drift toward whatever the candidate happens to be good at.
+
+**Why generation moved out of the form action:** it held a POST open for ten to
+twenty seconds, and a 503 from Gemini threw from a server action — which Next
+renders as a bare 500 page, discarding the setup the user had just filled in.
+The session row is the cheap reliable part, so it lands first. Close the tab
+mid-generation and the session is waiting on the dashboard.
 
 **Why retries take the max:** averaging every attempt would make the Retry
 button lower your score for using it.
@@ -417,12 +428,19 @@ would be indefensible.
 ```
 enforceRateLimit(userId)      count ai_usage rows in rolling windows
         │
-    call provider             with a model fallback list
+    call provider             3 attempts per model, 0.8/1.6/3.2s backoff
+        │                     on 429, 5xx, timeout, connection reset
+        │                     404 → next model id; anything else → stop
         │
-recordUsage(...)              success or failure, always
+recordUsage(...)              success or failure, every attempt
         │
 toAppError(...) on throw      raw provider error → human sentence
 ```
+
+Retrying is not optional politeness: Gemini answers `503 "experiencing high
+demand"` often enough that treating it as fatal took down the whole
+start-interview flow. Failing fast on the rest matters equally — a wrong API key
+would otherwise spend twelve calls learning what the first response said.
 
 **Auth.** `getSession()` is React-`cache`d per request. It re-throws Next's
 control-flow errors (`DYNAMIC_SERVER_USAGE`, `NEXT_REDIRECT`) rather than
@@ -508,6 +526,7 @@ failures are the ones unit tests cannot see:
 npm run verify:resume     # builds a PDF by hand, checks nothing is invented
 npm run verify:interview  # scores a long rambling answer 3x (the JSON bug)
 npm run verify:focus      # proves picked technologies steer the question set
+npm run verify:retry      # stubs 503/429/401 — transient retried, permanent not
 ```
 
 Tests cover the maths that decides someone's score or what they've paid for:

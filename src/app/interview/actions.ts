@@ -101,8 +101,17 @@ const StartInput = z.object({
 });
 
 /**
- * Creates the session and generates the whole question set before the user
- * ever sees question one, so the interview is fixed and resumable.
+ * Creates the session and redirects. It does NOT wait for the questions.
+ *
+ * Generating them here meant the Begin button held a POST open for ten to
+ * twenty seconds and then, if Gemini answered 503 "high demand", threw from a
+ * server action — which Next renders as a bare 500 page. The user lost their
+ * whole setup to a condition that clears in about a second.
+ *
+ * The session row is the cheap, reliable part, so it is written first and the
+ * user is moved to the room immediately. The room asks for the questions and
+ * shows what is happening while they are written, which also means a failure
+ * has somewhere to be reported and a retry button to sit next to.
  */
 export async function startInterview(formData: FormData) {
   const user = await requireUserApi();
@@ -115,8 +124,9 @@ export async function startInterview(formData: FormData) {
     focusAreas: formData.getAll("focus").filter((v): v is string => typeof v === "string"),
   });
 
-  await enforceRateLimit(user.id);
-
+  // No rate limit here any more: this function makes no model call. The limit
+  // exists to cap AI spend, and charging a unit for writing one row would make
+  // people hit the ceiling before the work that costs anything happens.
   const profile = await getProfile(user.id);
   const resume = profile?.resumeExtractedData;
   const written = profile?.skillsDescription;
@@ -129,21 +139,6 @@ export async function startInterview(formData: FormData) {
   }
 
   const role = input.role || resume?.recommendedRole || "a role in your field";
-
-  const background = resume
-    ? [
-        resume.summary,
-        `Skills: ${resume.skills.join(", ")}`,
-        ...resume.experience.map(
-          (e) => `${e.role} at ${e.company}${e.period ? ` (${e.period})` : ""}. ${(e.highlights ?? []).join(" ")}`,
-        ),
-        ...resume.projects.map((p) => `Project ${p.name}: ${p.description ?? ""} ${(p.tech ?? []).join(", ")}`),
-        written,
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : (written ?? "");
-
   const preferredLanguage = profile?.preferredLanguage ?? "en";
 
   const [session] = await db
@@ -163,22 +158,92 @@ export async function startInterview(formData: FormData) {
     })
     .returning();
 
-  const questions = await generateQuestions({
-    userId: user.id,
-    sessionId: session.id,
-    persona: input.persona,
-    count: input.questionCount,
-    role,
-    background,
-    focusAreas: input.focusAreas,
-    language: preferredLanguage,
-  });
-
-  await db
-    .insert(interviewQuestions)
-    .values(questions.map((q) => ({ ...q, sessionId: session.id })));
-
+  // Everything the generator needs is in `config`, so the room can ask for the
+  // questions itself — and ask again if the first attempt failed.
   redirect(`/interview/${session.id}`);
+}
+
+/**
+ * Writes the question set for a session that doesn't have one yet.
+ *
+ * Called from the room rather than from the setup form, so the wait is
+ * something the user watches happen instead of a hung button. Safe to call
+ * twice: it returns early if questions already exist, and the unique index on
+ * (session_id, position) is the backstop if two calls somehow race.
+ */
+export async function prepareQuestions(sessionId: string): Promise<Result<{ count: number }>> {
+  try {
+    const user = await requireUserApi();
+
+    const [session] = await db
+      .select()
+      .from(practiceSessions)
+      .where(and(eq(practiceSessions.id, sessionId), eq(practiceSessions.userId, user.id)))
+      .limit(1);
+
+    if (!session) throw new AppError("not_found", "That interview doesn't exist.");
+
+    const existing = await db
+      .select({ id: interviewQuestions.id })
+      .from(interviewQuestions)
+      .where(eq(interviewQuestions.sessionId, session.id));
+
+    if (existing.length > 0) return { ok: true, data: { count: existing.length } };
+
+    const profile = await getProfile(user.id);
+    const resume = profile?.resumeExtractedData;
+    const written = profile?.skillsDescription;
+
+    if (!resume && !written) {
+      throw new AppError(
+        "invalid_input",
+        "Add a skills description or upload a resume first, so the questions are about you.",
+      );
+    }
+
+    // Rebuilt here rather than carried through the session row: it is derived
+    // from the profile, and a copy in the database would be a second source of
+    // truth that goes stale the moment a resume is re-uploaded.
+    const background = resume
+      ? [
+          resume.summary,
+          `Skills: ${resume.skills.join(", ")}`,
+          ...resume.experience.map(
+            (e) =>
+              `${e.role} at ${e.company}${e.period ? ` (${e.period})` : ""}. ${(e.highlights ?? []).join(" ")}`,
+          ),
+          ...resume.projects.map(
+            (p) => `Project ${p.name}: ${p.description ?? ""} ${(p.tech ?? []).join(", ")}`,
+          ),
+          written,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : (written ?? "");
+
+    const config = session.config ?? {};
+    await enforceRateLimit(user.id);
+
+    const questions = await generateQuestions({
+      userId: user.id,
+      sessionId: session.id,
+      persona: (config.persona ?? "professional") as InterviewerPersona,
+      count: config.questionCount ?? 10,
+      role: config.role ?? session.promptSnapshot ?? "a role in your field",
+      background,
+      focusAreas: config.focusAreas ?? [],
+      language: session.language,
+    });
+
+    await db
+      .insert(interviewQuestions)
+      .values(questions.map((q) => ({ ...q, sessionId: session.id })));
+
+    revalidatePath(`/interview/${session.id}`);
+    return { ok: true, data: { count: questions.length } };
+  } catch (error) {
+    return fail(error, "prepareQuestions");
+  }
 }
 
 /* ── Answering ──────────────────────────────────────────────────────────── */

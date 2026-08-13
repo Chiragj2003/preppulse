@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect, notFound } from "next/navigation";
 
 import { InterviewRoom } from "@/components/interview-room";
+import { PreparingRound } from "@/components/preparing-round";
 import { requireUser } from "@/lib/session";
 import { AppError } from "@/lib/errors";
 import type { InterviewerPersona } from "@/lib/types";
@@ -29,6 +30,19 @@ export default async function InterviewRoomPage({
   const { session, questions, answers } = sessionResult;
 
   if (session.status === "completed") redirect(`/interview/${sessionId}/report`);
+
+  // The session row is written before the questions exist, so landing here with
+  // an empty set is the normal first render, not an error.
+  if (questions.length === 0) {
+    return (
+      <PreparingRound
+        sessionId={session.id}
+        role={session.config?.role ?? session.promptSnapshot ?? "the role"}
+        questionCount={session.config?.questionCount ?? 10}
+        focusAreas={session.config?.focusAreas ?? []}
+      />
+    );
+  }
 
   // Latest attempt per question — the room only needs to know what's answered.
   const answered = new Map<string, { overallScore: number }>();

@@ -341,6 +341,58 @@ real answer, and throwing it away punishes the candidate for a limit that exists
 to protect costs.
 </details>
 
+<details>
+<summary><b>D10. ⭐⭐</b> Gemini returns 503 "experiencing high demand". Where should that be handled?</summary>
+
+In two places, for two different reasons.
+
+**In the client:** 503 is transient — it means wait and it works. `callGemini`
+now retries three times per model at 0.8s / 1.6s / 3.2s, then falls through to
+the next model id, because a different id has separate capacity. Previously the
+client only fell through on 404, so a capacity spike was fatal.
+
+**In the flow:** even with retries, generation can fail. It used to run inside
+the `startInterview` form action, so the failure threw from a server action —
+which Next renders as a bare 500 page, discarding a setup form the user had just
+filled in. Now the action writes the session row and redirects; the room asks
+for the questions and has somewhere to show a failure and a retry button.
+
+The complementary half is failing *fast* on what won't recover. A bad API key
+returns 401 on every attempt, so retrying it burns twelve calls and twenty
+seconds to learn what the first response already said.
+</details>
+
+<details>
+<summary><b>D11.</b> Why does the room generate the questions rather than the setup form?</summary>
+
+Because a ten-to-twenty second wait needs a screen, and a failure needs
+somewhere to land.
+
+Everything the generator needs is already in `practice_sessions.config` —
+persona, count, role, focus areas — so the room can ask for the questions
+itself, and ask again if the first attempt failed. Side effects: closing the tab
+mid-generation leaves a resumable session on the dashboard instead of nothing,
+and the rate limit moved to where the model call actually is.
+
+`prepareQuestions` returns early if questions exist, with the unique index on
+`(session_id, position)` as the backstop against a race.
+</details>
+
+<details>
+<summary><b>D12.</b> The generation effect has no cleanup flag. Isn't that a leak?</summary>
+
+It is deliberate, and the version *with* a flag was the bug.
+
+React double-invokes effects in development. A ref guard stops the second run
+from generating twice. But a `cancelled` flag set in the cleanup discards the
+*first* run's result — and the second run has already returned early on the
+guard. The pair leaves the screen spinning forever over a set of questions that
+were successfully written.
+
+Setting state after unmount is a no-op in React 18+, so there is nothing to leak
+here. Two safety mechanisms that each work alone can still break each other.
+</details>
+
 ---
 
 ## E. Group discussion & debate
