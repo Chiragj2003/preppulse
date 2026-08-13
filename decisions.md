@@ -761,6 +761,56 @@ worse than an obviously rough one.
 
 **Why.** Repeated brief generation wastes API tokens. Storing in Postgres guarantees persistence even if Redis cache expires or is omitted.
 
+## D66. End of turn is detected from the transcript, not the microphone
+
+**Decision.** `useVoiceSession` decides a turn is over when the recogniser has produced no new words for `silenceMs`. The Web Audio `AnalyserNode` remains, but only for the level meter and for barge-in (talking over the AI).
+
+**Why.** The obvious implementation watches microphone energy and fires after N ms below a threshold. It was the implementation, and it fails in both directions. In a room with any background noise — a fan, traffic, a TV in the next room — the level never drops far enough, so the turn never ends and the user is stuck holding a floor nobody will take. A mid-sentence breath *does* drop below it, so the turn ends early and half an answer gets submitted. Both land on the user as "the app ignored me", which is the single worst thing a speaking app can do.
+
+The recogniser already answers the question that actually matters — *have any new words arrived?* — and it answers it after its own noise handling, which is far better than a threshold on raw energy. Every new word re-runs the effect and restarts the clock; when words stop, the timeout survives and the floor changes hands. Noise immunity comes for free, and no microphone permission is needed beyond what the recogniser already holds.
+
+Interviews override the default 1.1s to 2.4s. Thinking mid-answer is normal in an interview and must not end your turn; Chrome finalises a result about a second after you stop, so the felt pause is nearer three seconds — which is roughly what a real interviewer waits.
+
+## D67. The interview room has no "done answering" button
+
+**Decision.** Spoken answers end themselves. A manual submit renders only when `canAutoSend` is false — the browser has no speech recognition, or the mic was blocked. Typed answers keep their own submit, because typing is a deliberate act.
+
+**Why.** A stop button turns every natural pause into a decision about whether to reach for the mouse, which is precisely the thing that stops an interview from feeling like an interview. The escape hatch still exists, but it appears exactly when the primary path demonstrably cannot work, rather than sitting there teaching everyone that pausing doesn't work.
+
+The "Cut in" button went the same way. It was a control for something that already happens: the moment you talk over the AI, the mic level crosses the barge-in threshold and the floor is yours. A control that duplicates a behaviour teaches people the behaviour doesn't exist.
+
+## D68. The model answer is withheld until the report
+
+**Decision.** `analyseAnswer` still generates `idealAnswer` on every answer and it is still stored, but the room shows only the score, the feedback and the strengths/fixes. The whole set appears in the report, question by question, next to what you actually said.
+
+**Why.** Reading a perfect answer to question 3 and then answering question 4 is how you end up practising recall instead of thinking — the phrasing you just read comes back out of your mouth, and the score measures your short-term memory. Generating it immediately is still right: it costs one call either way, and the report needs it.
+
+## D69. Interview focus areas are tagged and counted, not string-matched
+
+**Decision.** The candidate picks up to six technologies at setup, sourced from their own resume skills and project tech plus free entry. The prompt requires each question to carry a `focusArea` naming which chosen topic it tests, validated in code against the selected list. `interview_questions.focus_area` stores the result.
+
+**Why.** "The questions will concentrate on what you picked" is a promise about model output, and promises about model output quietly stop being true. Making the model declare the topic per question turns it into something countable — coverage is checked in code, shown as a chip on the question, and summarised on the report as "Tested on: Postgres ×2, Kubernetes ×2".
+
+The first verification script instead searched question text for the chosen words, and reported a failure for a set that was in fact on topic: a question about re-architecting a write path under lock contention is a system-design question that never contains the words "system design". Substring matching measures vocabulary, not subject matter. `npm run verify:focus` now reads the tag: 6/8 tagged, 3/3 areas covered, baseline clean.
+
+The suggestion list is derived from the resume rather than hardcoded, because a fixed list of technologies is wrong for most people and stale within a year — and the only technologies worth being interviewed on are the ones you claimed.
+
+## D70. A ten-minute cap on a single answer, enforced in two places
+
+**Decision.** `MAX_ANSWER_SECONDS = 600` lives in `lib/types.ts`. The room stops the clock and submits at the cap, warning from nine minutes. The server clamps `durationSeconds` and truncates the transcript rather than rejecting either.
+
+**Why.** No interview question is worth ten minutes of talking, so past that the recording is not an answer — it's a live microphone someone walked away from, spending Gemini tokens on a transcript nobody will read. Two copies because they protect different things: the room protects the candidate from discovering ten minutes later that nothing was listening, the server protects the bill from a client that can be edited.
+
+Clamping rather than rejecting matters. A transcript over the cap still contains a real answer, and throwing it away punishes the candidate for a limit that exists to protect costs.
+
+## D71. SEO surface is generated, not checked in
+
+**Decision.** `sitemap.ts`, `robots.ts`, `opengraph-image.tsx` and `apple-icon.tsx` are all route handlers deriving from `env.appUrl` and the shared logo geometry. The create-next-app `favicon.ico` was deleted in favour of `icon.svg`.
+
+**Why.** A checked-in OG PNG goes stale the moment the wording changes and nobody remembers to re-export it. A hardcoded sitemap host advertises production from a preview deployment. Both problems disappear when the asset is computed.
+
+One rendering note worth keeping: satori draws `radial-gradient` with a hard edge, so a soft ambient wash comes out as a visible circle sitting on the card. Linear gradients render correctly.
+
 ---
 
 # Open items
