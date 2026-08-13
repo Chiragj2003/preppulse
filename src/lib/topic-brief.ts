@@ -1,20 +1,9 @@
-import Groq from "groq-sdk";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { topics } from "@/db/app-schema";
-import { env } from "@/lib/env";
+import { callGroqText } from "@/lib/ai/groq";
 import { getCached, setCached } from "@/lib/redis";
-
-/**
- * Groq decommissions models on a rolling basis. Trying the next id on a
- * model-not-found error means one retirement doesn't take the app down with it.
- */
-const MODELS = [
-  process.env.GROQ_MODEL,
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-].filter((m): m is string => Boolean(m));
 
 /**
  * Caching strategy:
@@ -67,45 +56,27 @@ export async function getTopicBrief(topicId: string, promptText: string): Promis
   return generated;
 }
 
+/**
+ * Best-effort: a missing brief costs the user a nice-to-have, so a failure
+ * returns null and the room renders without one rather than blocking on it.
+ * A short timeout for the same reason — nobody should wait on this.
+ */
 async function generateBrief(promptText: string): Promise<string | null> {
-  const client = new Groq({ apiKey: env.groqApiKey, timeout: 15_000, maxRetries: 1 });
+  try {
+    return await callGroqText({
+      prompt: `Generate a 2-3 sentence angle-opener for the following topic (something to get the user thinking). Keep it simple and punchy.
 
-  const prompt = `Generate a 2-3 sentence angle-opener for the following topic (something to get the user thinking). Keep it simple and punchy.
-
-TOPIC: ${promptText}`;
-
-  for (const model of MODELS) {
-    try {
-      const completion = await client.chat.completions.create({
-        model,
-        temperature: 0.7,
-        max_tokens: 150,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a witty, insightful conversation starter. You reply ONLY with a 2-3 sentence opener, no quotes, no conversational filler.",
-          },
-          { role: "user", content: prompt },
-        ],
-      });
-
-      const content = completion.choices[0]?.message?.content?.trim();
-      if (content) return content;
-    } catch (error) {
-      if (!isModelUnavailable(error)) {
-        console.warn(`[topic-brief] generation failed on ${model}`, error);
-        break;
-      }
-      console.warn(`[topic-brief] model "${model}" unavailable, trying next`);
-    }
+TOPIC: ${promptText}`,
+      system:
+        "You are a witty, insightful conversation starter. You reply ONLY with a 2-3 sentence opener, no quotes, no conversational filler.",
+      operation: "topic_brief",
+      userId: "system",
+      temperature: 0.7,
+      maxOutputTokens: 150,
+      timeoutMs: 15_000,
+    });
+  } catch (error) {
+    console.warn("[topic-brief] generation failed", error);
+    return null;
   }
-
-  return null;
-}
-
-function isModelUnavailable(error: unknown): boolean {
-  const status = (error as { status?: number })?.status;
-  const message = error instanceof Error ? error.message : "";
-  return status === 404 || /decommission|does not exist|model_not_found/i.test(message);
 }

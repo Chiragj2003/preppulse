@@ -835,6 +835,24 @@ Splitting it fixes three things at once: the wait becomes something you watch ha
 
 The effect deliberately has no `cancelled` flag in its cleanup. React's development double-invoke would otherwise abandon the first run's result while the ref guard makes the second a no-op, leaving the screen spinning forever over questions that had already been written.
 
+## D74. Groq is the fallback when Gemini is exhausted
+
+**Decision.** `callGemini` tries Groq once every Gemini model is used up. `lib/ai/groq.ts` is the single Groq entry point; `lib/ai/retry.ts` holds the retry policy and failure classification both clients share.
+
+**Why.** Groq was already configured, already paid for, and sitting idle while the interview flow told people to come back later. Retrying Gemini harder only helps if Gemini recovers; a second provider helps when it doesn't.
+
+The reason this hadn't been done was structural rather than deliberate. The Groq call loop was written out three times — in `score.ts`, `discussion.ts` and `topic-brief.ts` — each with its own copy of the model list and its own `isModelUnavailable`, and none with backoff. There was no shared function for the Gemini client to fall back to, only three private ones. Extracting it removed 107 lines from those three files and added a provider.
+
+**Two things deliberately do not fall back.**
+
+A PDF cannot go to Groq. `extractResume` sends raw bytes as `inline_data` because Gemini reads documents natively; Groq's chat API takes text only. Resume extraction has no honest fallback, so it doesn't get a dishonest one — the parts array is checked for `inline_data` and the fallback declines.
+
+A content error doesn't go either. If Gemini answered but the JSON was wrong, that is usually our prompt or our schema, and failing over would hide the bug while doubling its cost. `isContentError` separates "the provider is unreachable" from "the provider replied and we didn't like it". Transport failures — busy, rate-limited, timed out, bad key, retired model — are exactly what a second provider is for.
+
+**The trade being accepted.** A total Gemini outage costs 3 models × 3 attempts ≈ 9 seconds of backoff before Groq is asked. Cutting the budget when a fallback exists would shave that, at the cost of a conditional attempt policy nobody would remember. The common case — one 503 — recovers in 1.6s, and 9 seconds with an answer beats an error page.
+
+`npm run verify:retry` covers both halves: a 401 reaches Groq after 1 Gemini call, and every model failing reaches it after 9.
+
 ---
 
 # Open items

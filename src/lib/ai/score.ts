@@ -1,8 +1,6 @@
-import Groq from "groq-sdk";
 import { z } from "zod";
 
-import { env } from "@/lib/env";
-import { AppError, toAppError } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import {
   clamp,
   countWords,
@@ -15,17 +13,7 @@ import {
   wordsPerMinute,
 } from "@/lib/scoring";
 import type { EvaluationPayload, Language } from "@/lib/types";
-import { recordUsage } from "./usage";
-
-/**
- * Groq decommissions models on a rolling basis. Trying the next id on a
- * model-not-found error means one retirement doesn't take the app down with it.
- */
-const MODELS = [
-  process.env.GROQ_MODEL,
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-].filter((m): m is string => Boolean(m));
+import { callGroq } from "./groq";
 
 /** Only the judgement calls are asked of the model. Numbers we can count, we count. */
 const ModelVerdict = z.object({
@@ -148,76 +136,21 @@ export async function scoreAnswer(input: {
   };
 }
 
+/**
+ * The model loop that used to live here is now lib/ai/groq.ts, shared with the
+ * discussion engine and the topic briefs — and reachable as a fallback when
+ * Gemini is busy, which is the whole reason it was worth extracting.
+ */
 async function askGroq(args: { prompt: string; userId: string; sessionId: string }) {
-  const client = new Groq({ apiKey: env.groqApiKey, timeout: 45_000, maxRetries: 1 });
-
-  let lastError: unknown;
-
-  for (const model of MODELS) {
-    const startedAt = Date.now();
-    try {
-      const completion = await client.chat.completions.create({
-        model,
-        temperature: 0.3,
-        max_tokens: 1400,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a precise, encouraging communication coach. You always reply with a single valid JSON object and nothing else.",
-          },
-          { role: "user", content: args.prompt },
-        ],
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) throw new Error("Groq returned an empty completion");
-
-      const parsed = ModelVerdict.safeParse(JSON.parse(content));
-      if (!parsed.success) {
-        throw new Error(`Groq returned unexpected JSON: ${parsed.error.issues[0]?.message}`);
-      }
-
-      await recordUsage({
-        userId: args.userId,
-        sessionId: args.sessionId,
-        provider: "groq",
-        model,
-        operation: "score_answer",
-        inputTokens: completion.usage?.prompt_tokens ?? 0,
-        outputTokens: completion.usage?.completion_tokens ?? 0,
-        latencyMs: Date.now() - startedAt,
-      });
-
-      return parsed.data;
-    } catch (error) {
-      lastError = error;
-
-      await recordUsage({
-        userId: args.userId,
-        sessionId: args.sessionId,
-        provider: "groq",
-        model,
-        operation: "score_answer",
-        inputTokens: 0,
-        outputTokens: 0,
-        latencyMs: Date.now() - startedAt,
-        ok: false,
-        errorCode: error instanceof Error ? error.message.slice(0, 120) : "unknown",
-      });
-
-      // Only a retired/unknown model is worth retrying on a different id.
-      if (!isModelUnavailable(error)) break;
-      console.warn(`[groq] model "${model}" unavailable, trying the next one`);
-    }
-  }
-
-  throw toAppError(lastError, "groq.scoreAnswer");
-}
-
-function isModelUnavailable(error: unknown): boolean {
-  const status = (error as { status?: number })?.status;
-  const message = error instanceof Error ? error.message : "";
-  return status === 404 || /decommission|does not exist|model_not_found/i.test(message);
+  return callGroq({
+    prompt: args.prompt,
+    system:
+      "You are a precise, encouraging communication coach. You always reply with a single valid JSON object and nothing else.",
+    schema: ModelVerdict,
+    operation: "score_answer",
+    userId: args.userId,
+    sessionId: args.sessionId,
+    temperature: 0.3,
+    maxOutputTokens: 1400,
+  });
 }

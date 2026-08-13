@@ -1,12 +1,9 @@
-import Groq from "groq-sdk";
 import { z } from "zod";
 
-import { env } from "@/lib/env";
 import { GD_PERSONAS, MODERATOR, STAGE_BRIEF, type DebateStage } from "@/lib/gd-metrics";
-import { toAppError } from "@/lib/errors";
 import { isDeflection, isRepetitive, type Scenario } from "@/lib/scenarios";
 import type { DiscussionPersona, Language } from "@/lib/types";
-import { recordUsage } from "./usage";
+import { callGroq } from "./groq";
 
 const LANGUAGE_NOTE: Record<Language, string> = {
   en: "Reply in English.",
@@ -15,16 +12,12 @@ const LANGUAGE_NOTE: Record<Language, string> = {
   hi: "The candidate may speak Hindi. Reply in Hindi.",
 };
 
-/**
+/*
  * Group discussion and debate run on Groq for the same reason Phase 2 does:
  * three participants have to answer inside a couple of seconds or the room
- * stops feeling live, and latency matters more here than depth.
+ * stops feeling live, and latency matters more here than depth. The model list
+ * itself lives in lib/ai/groq.ts.
  */
-const MODELS = [
-  process.env.GROQ_MODEL,
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-].filter((m): m is string => Boolean(m));
 
 const ReplySchema = z.object({
   /** The model's read on the user's turn — judgement we then merely tally. */
@@ -61,6 +54,10 @@ function transcriptOf(turns: Turn[], personas: DiscussionPersona[]): string {
     .join("\n");
 }
 
+/**
+ * The model loop that used to live here is now lib/ai/groq.ts, shared with the
+ * scoring engine and the topic briefs.
+ */
 async function askGroq(args: {
   prompt: string;
   system: string;
@@ -68,65 +65,17 @@ async function askGroq(args: {
   sessionId: string;
   operation: string;
 }) {
-  const client = new Groq({ apiKey: env.groqApiKey, timeout: 45_000, maxRetries: 1 });
-  let lastError: unknown;
-
-  for (const model of MODELS) {
-    const startedAt = Date.now();
-    try {
-      const completion = await client.chat.completions.create({
-        model,
-        temperature: 0.9, // personalities need variance; scoring does not
-        max_tokens: 1200,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: args.system },
-          { role: "user", content: args.prompt },
-        ],
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) throw new Error("Groq returned an empty completion");
-
-      const parsed = ReplySchema.safeParse(JSON.parse(content));
-      if (!parsed.success) {
-        throw new Error(`Groq returned unexpected JSON: ${parsed.error.issues[0]?.message}`);
-      }
-
-      await recordUsage({
-        userId: args.userId,
-        sessionId: args.sessionId,
-        provider: "groq",
-        model,
-        operation: args.operation,
-        inputTokens: completion.usage?.prompt_tokens ?? 0,
-        outputTokens: completion.usage?.completion_tokens ?? 0,
-        latencyMs: Date.now() - startedAt,
-      });
-
-      return parsed.data;
-    } catch (error) {
-      lastError = error;
-      await recordUsage({
-        userId: args.userId,
-        sessionId: args.sessionId,
-        provider: "groq",
-        model,
-        operation: args.operation,
-        inputTokens: 0,
-        outputTokens: 0,
-        latencyMs: Date.now() - startedAt,
-        ok: false,
-        errorCode: error instanceof Error ? error.message.slice(0, 120) : "unknown",
-      });
-
-      const status = (error as { status?: number })?.status;
-      const message = error instanceof Error ? error.message : "";
-      if (!(status === 404 || /decommission|does not exist|model_not_found/i.test(message))) break;
-    }
-  }
-
-  throw toAppError(lastError, "groq.discussion");
+  return callGroq({
+    prompt: args.prompt,
+    system: args.system,
+    schema: ReplySchema,
+    operation: args.operation,
+    userId: args.userId,
+    sessionId: args.sessionId,
+    // Personalities need variance; scoring does not.
+    temperature: 0.9,
+    maxOutputTokens: 1200,
+  });
 }
 
 /**

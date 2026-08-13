@@ -359,7 +359,45 @@ for the questions and has somewhere to show a failure and a retry button.
 
 The complementary half is failing *fast* on what won't recover. A bad API key
 returns 401 on every attempt, so retrying it burns twelve calls and twenty
-seconds to learn what the first response already said.
+seconds to learn what the first response already said — but it *does* fall over
+to Groq, because a dead key is exactly what a second provider is for. See D13.
+</details>
+
+<details>
+<summary><b>D13. ⭐⭐</b> Two providers are configured. Why did an outage on one ever reach the user?</summary>
+
+Because there was nothing to fall back *to*. The Groq call loop was written out
+three times — in `score.ts`, `discussion.ts` and `topic-brief.ts` — each with
+its own copy of the model list and its own `isModelUnavailable`, and none with
+backoff. Three private functions, no shared entry point, so the Gemini client
+had no Groq to call.
+
+Extracting `lib/ai/groq.ts` removed 107 lines from those three files *and*
+added a provider. That is the shape worth recognising: the duplication wasn't
+just untidy, it was the thing preventing the feature.
+
+`lib/ai/retry.ts` now holds what both clients share — the backoff policy and
+the predicates that classify a failure.
+</details>
+
+<details>
+<summary><b>D14. ⭐</b> What must *not* fall back to the second provider, and why?</summary>
+
+Two things, and both refusals are the interesting part.
+
+**A PDF.** `extractResume` sends raw bytes as `inline_data` because Gemini
+reads documents natively. Groq's chat API is text-only. There is no honest
+fallback for resume extraction, so it doesn't get a dishonest one — the parts
+array is checked for `inline_data` and the fallback declines.
+
+**A content error.** If Gemini answered but the JSON didn't match the schema,
+that is usually our prompt or our schema — not an outage. Failing over would
+hide a bug we need to see and pay twice for the privilege. `isContentError`
+draws the line between "the provider is unreachable" and "the provider replied
+and we didn't like it".
+
+The general principle: a fallback is for when you can't reach someone, not for
+when you don't like their answer.
 </details>
 
 <details>

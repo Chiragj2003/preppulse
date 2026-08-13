@@ -2,6 +2,15 @@ import { z } from "zod";
 
 import { env } from "@/lib/env";
 import { AppError, toAppError } from "@/lib/errors";
+import { callGroq } from "./groq";
+import {
+  MAX_ATTEMPTS_PER_MODEL,
+  backoffFor,
+  isContentError,
+  isModelUnavailable,
+  isTransient,
+  sleep,
+} from "./retry";
 import { recordUsage } from "./usage";
 
 /**
@@ -22,22 +31,8 @@ const MODELS = [
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
-/**
- * Transient failures get retried before the model list is walked.
- *
- * Gemini answers 503 "This model is currently experiencing high demand" fairly
- * often, and it means exactly what it says: wait and it works. Treating that as
- * fatal took down the whole start-interview flow for a condition that clears in
- * about a second.
- *
- * Three attempts at 0.8s / 1.6s / 3.2s, then the next model — a different id
- * has separate capacity, so falling through is a second real chance rather than
- * a formality.
- */
-const MAX_ATTEMPTS_PER_MODEL = 3;
-const BACKOFF_MS = 800;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// Retry policy and failure classification are shared with the Groq client;
+// see lib/ai/retry.ts.
 
 export type GeminiPart =
   | { text: string }
@@ -154,7 +149,7 @@ export async function callGemini<T>(options: CallOptions<T>): Promise<T> {
         if (!isTransient(error)) break models;
 
         if (attempt < MAX_ATTEMPTS_PER_MODEL) {
-          const wait = BACKOFF_MS * 2 ** (attempt - 1);
+          const wait = backoffFor(attempt);
           console.warn(
             `[gemini] "${model}" busy (attempt ${attempt}/${MAX_ATTEMPTS_PER_MODEL}), retrying in ${wait}ms`,
           );
@@ -167,30 +162,63 @@ export async function callGemini<T>(options: CallOptions<T>): Promise<T> {
     }
   }
 
-  throw toAppError(lastError, "gemini");
+  // Gemini is exhausted. Groq is configured, idle, and perfectly capable of
+  // this — so use it rather than telling the candidate to come back later.
+  const fallback = await tryGroqFallback(options, lastError);
+  if (fallback.used) return fallback.value;
+
+  throw toAppError(lastError, `gemini.${options.operation}`);
 }
 
 /**
- * Overloaded, rate-limited or timed out — conditions that clear on their own.
+ * The second provider, tried once Gemini has run out of models.
  *
- * 429 is included deliberately: Gemini's free tier returns it for a per-minute
- * burst, not a permanent ban, and backing off is the documented response.
+ * Two conditions, both of which are refusals to paper over something:
+ *
+ * A PDF cannot go. `extractResume` sends raw bytes as `inline_data` because
+ * Gemini reads documents natively; Groq's chat API takes text only. There is no
+ * honest fallback for resume extraction, so it doesn't get a dishonest one.
+ *
+ * A content error doesn't go either. If Gemini answered but the JSON was wrong,
+ * that is usually our prompt or our schema, and failing over would hide the bug
+ * while doubling its cost. Transport failures — busy, rate-limited, timed out,
+ * bad key, retired model — are exactly what a second provider is for.
  */
-function isTransient(error: unknown): boolean {
-  const status = (error as { status?: number })?.status;
-  if (status === 429 || (status !== undefined && status >= 500)) return true;
+async function tryGroqFallback<T>(
+  options: CallOptions<T>,
+  geminiError: unknown,
+): Promise<{ used: true; value: T } | { used: false; value: never }> {
+  const texts = options.parts.map((part) => ("text" in part ? part.text : null));
+  const textOnly = texts.every((text): text is string => text !== null);
 
-  const name = (error as { name?: string })?.name;
-  if (name === "TimeoutError" || name === "AbortError") return true;
+  if (!textOnly || !env.has.groq || isContentError(geminiError)) {
+    return { used: false } as { used: false; value: never };
+  }
 
-  const message = error instanceof Error ? error.message : "";
-  return /overloaded|UNAVAILABLE|high demand|try again|fetch failed|ECONNRESET/i.test(message);
-}
+  console.warn(
+    `[gemini] exhausted for "${options.operation}", falling back to Groq —`,
+    geminiError instanceof Error ? geminiError.message.slice(0, 160) : geminiError,
+  );
 
-function isModelUnavailable(error: unknown): boolean {
-  const status = (error as { status?: number })?.status;
-  const message = error instanceof Error ? error.message : "";
-  return status === 404 || /not found|NOT_FOUND|is not supported/i.test(message);
+  try {
+    const value = await callGroq({
+      prompt: texts.join("\n\n"),
+      schema: options.schema,
+      // Recorded under the same operation name, so the admin cost page shows a
+      // fallback as what it is rather than as unexplained Groq traffic.
+      operation: options.operation,
+      userId: options.userId,
+      sessionId: options.sessionId,
+      temperature: options.temperature,
+      maxOutputTokens: options.maxOutputTokens,
+    });
+    return { used: true, value };
+  } catch (groqError) {
+    // Both providers are down. The Gemini error is the root cause and the more
+    // actionable of the two, so that is what the caller gets.
+    console.error("[groq] fallback also failed", groqError);
+    return { used: false } as { used: false; value: never };
+  }
 }
 
 /** Guardrail for resume uploads, enforced before anything reaches the model. */
