@@ -36,20 +36,18 @@ export interface VoiceSessionOptions {
 }
 
 /**
- * Tuning for end-of-utterance detection.
+ * How long a pause ends a turn.
  *
- * SPEECH_FLOOR sits above room tone but below normal speech, so breathing and
- * a laptop fan don't hold the floor open forever.
- *
- * SILENCE_MS is the judgement call: too short and it cuts people off mid
- * thought; too long and the conversation feels dead. 1.1s is roughly the pause
- * a person leaves before someone else speaks, which is the behaviour being
- * imitated.
+ * A judgement call: too short and it cuts people off mid-thought; too long and
+ * the room feels dead. 1.1s is roughly the gap a person leaves before someone
+ * else speaks, which is the behaviour being imitated. Interviews override this
+ * upward — thinking mid-answer is normal there and must not end your turn.
  */
-const SPEECH_FLOOR = 0.035;
 const DEFAULT_SILENCE_MS = 1100;
 /** Below this, the "turn" is a cough or a stray noise, not an answer. */
 const MIN_WORDS_TO_SEND = 2;
+/** Mic energy that counts as the user talking over the AI. */
+const BARGE_IN_LEVEL = 0.08;
 
 export function useVoiceSession(options: VoiceSessionOptions) {
   const {
@@ -80,13 +78,8 @@ export function useVoiceSession(options: VoiceSessionOptions) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  // End-of-utterance tracking. Refs, not state: this is read every animation
-  // frame, and re-rendering 60 times a second to store a timestamp would be
-  // both pointless and a guaranteed source of stale closures.
-  const lastVoiceAtRef = useRef<number>(0);
-  const hasSpokenRef = useRef<boolean>(false);
+  // One-shot guard so a turn is handed over once, not once per render.
   const sendingRef = useRef<boolean>(false);
-  const autoSendRef = useRef<(() => void) | null>(null);
 
   // Stable callbacks for speech and TTS
   const speech = useSpeech(language);
@@ -181,27 +174,12 @@ export function useVoiceSession(options: VoiceSessionOptions) {
         const avg = sum / (usableBins * 255);
         setAudioLevel(avg);
 
-        const now = performance.now();
-
-        // Instant cutoff: the user talking over the AI takes the floor back.
-        if (statusRef.current === "speaking" && avg > 0.08) {
+        // The one thing mic energy is actually good for: the user talking over
+        // the AI takes the floor back instantly. End-of-turn is decided from
+        // the transcript instead — see the idle effect below.
+        if (statusRef.current === "speaking" && avg > BARGE_IN_LEVEL) {
           ttsRef.current.stop();
           interrupt();
-        }
-
-        // End of utterance. This is what makes the room conversational: the
-        // turn is handed over by pausing, exactly as it is with a person,
-        // rather than by finding and pressing a button.
-        if (statusRef.current === "listening" && !sendingRef.current) {
-          if (avg > SPEECH_FLOOR) {
-            lastVoiceAtRef.current = now;
-            hasSpokenRef.current = true;
-          } else if (hasSpokenRef.current && now - lastVoiceAtRef.current > silenceMs) {
-            // Only fire once per utterance; the flag clears when listening resumes.
-            sendingRef.current = true;
-            hasSpokenRef.current = false;
-            autoSendRef.current?.();
-          }
         }
 
         animFrameRef.current = requestAnimationFrame(checkVolume);
@@ -209,12 +187,12 @@ export function useVoiceSession(options: VoiceSessionOptions) {
 
       checkVolume();
     } catch (err) {
+      // Not fatal. The level meter goes flat and barge-in stops working, but
+      // the recogniser still runs and turns still hand over on a pause — so
+      // this must not raise an error the room treats as a dead session.
       console.warn("[voiceSession] VAD audio stream error", err);
-      setErrorMessage(
-        "We couldn't reach your microphone, so turns won't hand over automatically. Allow mic access and start again.",
-      );
     }
-  }, [interrupt, silenceMs]);
+  }, [interrupt]);
 
   const stopVAD = useCallback(() => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -278,8 +256,6 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     speechRef.current.reset();
     speechRef.current.resume();
     sendingRef.current = false;
-    hasSpokenRef.current = false;
-    lastVoiceAtRef.current = performance.now();
     setStatus("listening");
   }, []);
 
@@ -296,7 +272,6 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     (content: string, speaker: string | null = null, role = "candidate") => {
       if (!content.trim()) return;
       speechRef.current.reset();
-      hasSpokenRef.current = false;
       setStatus("processing");
       void saveTurnToDb(speaker, content, role);
       onTurnCompleteRef.current?.(speaker, content);
@@ -305,40 +280,40 @@ export function useVoiceSession(options: VoiceSessionOptions) {
   );
 
   /**
-   * Fired by the VAD loop when a pause ends a turn.
+   * End of turn, detected from the transcript rather than the microphone.
    *
-   * Reads the transcript through a ref rather than a dependency, because this
-   * runs inside a requestAnimationFrame closure created once at session start.
+   * The obvious implementation watches mic energy and fires after N ms below a
+   * threshold. It was the implementation here, and it is wrong twice over: in
+   * a room with any background noise the level never drops far enough, so the
+   * turn never ends; and a mid-sentence breath does drop below it, so the turn
+   * ends early. Both failures land on the user as "the app ignored me".
+   *
+   * The recogniser already answers the real question — "have any new words
+   * arrived?" — and it answers it after its own noise handling. Every new word
+   * re-runs this effect and restarts the clock; when the words stop, the
+   * timeout survives and the floor changes hands. No microphone permission
+   * beyond what the recogniser already holds, and noise immunity for free.
    */
   useEffect(() => {
-    autoSendRef.current = () => {
-      if (!autoSend) {
-        sendingRef.current = false;
-        return;
-      }
+    if (!autoSend || status !== "listening" || sendingRef.current) return;
 
-      const current = speechRef.current;
-      const text = `${current.finalText} ${current.interimText}`.trim();
-      const words = text.split(/\s+/).filter(Boolean);
+    const text = `${speech.finalText} ${speech.interimText}`.trim();
+    // A cough or a door closing shouldn't take the floor.
+    if (text.split(/\s+/).filter(Boolean).length < MIN_WORDS_TO_SEND) return;
 
-      // A cough or a door closing shouldn't take the floor. Reopen and wait.
-      if (words.length < MIN_WORDS_TO_SEND) {
-        sendingRef.current = false;
-        return;
-      }
-
+    const timer = setTimeout(() => {
+      if (statusRef.current !== "listening" || sendingRef.current) return;
+      sendingRef.current = true;
       sendTurn(text);
-    };
-  }, [autoSend, sendTurn]);
+    }, silenceMs);
+
+    return () => clearTimeout(timer);
+  }, [autoSend, status, speech.finalText, speech.interimText, silenceMs, sendTurn]);
 
   // Clear the one-shot guard whenever the floor comes back to the user, so the
   // next utterance can fire. Without this, auto-send works exactly once.
   useEffect(() => {
-    if (status === "listening") {
-      sendingRef.current = false;
-      hasSpokenRef.current = false;
-      lastVoiceAtRef.current = performance.now();
-    }
+    if (status === "listening") sendingRef.current = false;
   }, [status]);
 
   // Play AI response voice
@@ -367,6 +342,13 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     isMicActive: speech.isRecording && !speech.isPaused,
     isSpeaking: tts.isSpeaking || status === "speaking",
     isSupported: speech.supported,
+    /**
+     * Whether pausing will actually hand the turn over. The room uses this to
+     * decide whether to offer a manual send — an escape hatch that appears
+     * only when the hands-free path genuinely cannot work, rather than a
+     * button everyone has to find and press.
+     */
+    canAutoSend: autoSend && speech.supported && !speech.error,
     startSession,
     stopSession,
     interrupt,

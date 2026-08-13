@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Square, Volume2, Zap, Radio, MessageSquare } from "lucide-react";
+import { Mic, MicOff, Square, Volume2, Radio, MessageSquare } from "lucide-react";
 
 import { Surface } from "@/components/ui/surface";
 import type { VoiceSessionStatus } from "@/lib/useVoiceSession";
@@ -16,7 +16,6 @@ export interface VoiceVisualizerProps {
   counterpartName?: string;
   className?: string;
   onToggleMic?: () => void;
-  onInterrupt?: () => void;
   onStop?: () => void;
 }
 
@@ -25,11 +24,9 @@ export function VoiceVisualizer({
   audioLevel,
   transcript = "",
   isMicActive = true,
-  isSpeaking = false,
   counterpartName = "AI Partner",
   className = "",
   onToggleMic,
-  onInterrupt,
   onStop,
 }: VoiceVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -105,7 +102,7 @@ export function VoiceVisualizer({
       case "speaking":
         return { label: `${counterpartName} Speaking`, icon: <Volume2 className="size-3.5 text-accent animate-pulse" />, bg: "bg-accent/10 border-accent/30 text-accent" };
       case "interrupted":
-        return { label: "Interrupted!", icon: <Zap className="size-3.5 text-[var(--color-caution)]" />, bg: "bg-[var(--color-caution)]/10 border-[var(--color-caution)]/30 text-[var(--color-caution)]" };
+        return { label: "Go ahead", icon: <Mic className="size-3.5 text-[var(--color-caution)]" />, bg: "bg-[var(--color-caution)]/10 border-[var(--color-caution)]/30 text-[var(--color-caution)]" };
       case "processing":
         return { label: "Thinking...", icon: <Radio className="size-3.5 text-ink-3 animate-spin" />, bg: "bg-white/[0.06] border-line text-ink-2" };
       case "connecting":
@@ -133,19 +130,12 @@ export function VoiceVisualizer({
             <span>{badge.label}</span>
           </div>
 
+          {/* There was a "Cut in" button here. It was a button for something
+              that already happens: the moment you start talking over the AI,
+              the mic level crosses the barge-in threshold and the floor is
+              yours. A control that duplicates a behaviour teaches people the
+              behaviour doesn't exist. */}
           <div className="flex items-center gap-2">
-            {isSpeaking && onInterrupt && (
-              <button
-                type="button"
-                onClick={onInterrupt}
-                className="pressable inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-caution)]/15 border border-[var(--color-caution)]/40 text-[var(--color-caution)] text-[12px] hover:bg-[var(--color-caution)]/25 transition-colors"
-                title="Interrupt AI and take floor"
-              >
-                <Zap className="size-3" />
-                <span>Cut in</span>
-              </button>
-            )}
-
             {onToggleMic && (
               <button
                 type="button"

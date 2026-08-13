@@ -350,7 +350,6 @@ export function DiscussionRoom({
                     voiceSession.stopSession();
                   }
                 }}
-                onInterrupt={voiceSession.interrupt}
                 onStop={voiceSession.stopSession}
               />
             ) : (
