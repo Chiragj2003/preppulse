@@ -27,6 +27,18 @@ export async function getRateLimitStatus(userId: string): Promise<RateLimitStatu
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+  // Successful calls only.
+  //
+  // `ai_usage` holds one row per provider *attempt*, and an attempt is not a
+  // request the user made. Since retries and the Groq fallback landed, a single
+  // answer can write up to nine Gemini rows and nine Groq rows — so one click
+  // during an outage used to blow a six-per-minute cap on its own, and locked
+  // the user out of the feature that had just failed them.
+  //
+  // Counting successes is also the honest definition of the budget this cap
+  // protects: a failed call returns no tokens and costs nothing, so it has no
+  // business consuming someone's daily allowance. One completed operation
+  // writes exactly one `ok` row, whichever provider ended up serving it.
   const [row] = await db
     .select({
       lastMinute: sql<number>`count(*) filter (where ${aiUsage.createdAt} > now() - interval '1 minute')`.mapWith(
@@ -35,7 +47,9 @@ export async function getRateLimitStatus(userId: string): Promise<RateLimitStatu
       lastDay: sql<number>`count(*)`.mapWith(Number),
     })
     .from(aiUsage)
-    .where(and(eq(aiUsage.userId, userId), gte(aiUsage.createdAt, dayAgo)));
+    .where(
+      and(eq(aiUsage.userId, userId), eq(aiUsage.ok, true), gte(aiUsage.createdAt, dayAgo)),
+    );
 
   const usedThisMinute = row?.lastMinute ?? 0;
   const usedToday = row?.lastDay ?? 0;

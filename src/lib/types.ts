@@ -205,6 +205,8 @@ export interface SessionConfig {
   personaIds?: string[];
   /** Conversation / scenario role-play. */
   scenarioId?: string;
+  /** Reading practice: which piece is being read aloud. */
+  readingPieceId?: string;
 }
 
 export interface ProfileData {

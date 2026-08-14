@@ -24,6 +24,9 @@ function getSessionHref(session: { id: string; mode: string | null; overallScore
   ) {
     return `/discuss/${session.id}`;
   }
+  // Reading has no separate report — the room shows the result and is where
+  // you go to read it again, which is the point of a drill.
+  if (session.mode === "reading") return `/read/${session.id}`;
   return session.overallScore !== null
     ? `/practice/${session.id}/report`
     : `/practice/${session.id}`;
@@ -193,6 +196,11 @@ export default async function DashboardPage() {
                 ? "Questions written from your own resume, scored one answer at a time. Pick the technologies you want tested."
                 : "Add your resume or a few lines about what you do, and rounds get built around your actual experience.",
               wide: true,
+            },
+            {
+              href: "/read",
+              title: "Read Aloud",
+              body: "Tongue twisters and passages, checked word by word against the text.",
             },
             {
               href: "/practice?mode=quick",

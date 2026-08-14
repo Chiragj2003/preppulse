@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/lib/scoring.test.ts && tsx src/lib/interview-scoring.test.ts && tsx src/lib/gd-metrics.test.ts && tsx src/lib/gamification.test.ts && tsx src/lib/billing.test.ts && tsx src/lib/scenarios.test.ts && tsx src/lib/cost.test.ts && tsx src/lib/roleplay-scoring.test.ts",
+    "test": "tsx src/lib/scoring.test.ts && tsx src/lib/interview-scoring.test.ts && tsx src/lib/gd-metrics.test.ts && tsx src/lib/gamification.test.ts && tsx src/lib/billing.test.ts && tsx src/lib/scenarios.test.ts && tsx src/lib/cost.test.ts && tsx src/lib/roleplay-scoring.test.ts && tsx src/lib/reading-scoring.test.ts && tsx src/lib/presence-scoring.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
+    "@vladmandic/face-api": "^1.7.15",
     "bad-words": "^4.1.5",
     "better-auth": "^1.6.26",
     "clsx": "^2.1.1",

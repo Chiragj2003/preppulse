@@ -89,10 +89,18 @@ export const env = {
     return "http://localhost:3000";
   },
 
+  /**
+   * Caps on *successful* AI calls per user (see lib/rate-limit.ts).
+   *
+   * Six a minute was tuned when one practice session meant one scoring call. A
+   * group discussion spends one per turn and an interview one per answer, so a
+   * normal fast exchange hit the ceiling and got told to slow down for using
+   * the product as designed. Sixty a day is likewise under two interviews.
+   */
   get rateLimit() {
     return {
-      perMinute: intEnv("RATE_LIMIT_PER_MINUTE", 6),
-      perDay: intEnv("RATE_LIMIT_PER_DAY", 60),
+      perMinute: intEnv("RATE_LIMIT_PER_MINUTE", 15),
+      perDay: intEnv("RATE_LIMIT_PER_DAY", 150),
     };
   },
 

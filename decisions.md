@@ -853,6 +853,52 @@ A content error doesn't go either. If Gemini answered but the JSON was wrong, th
 
 `npm run verify:retry` covers both halves: a 401 reaches Groq after 1 Gemini call, and every model failing reaches it after 9.
 
+## D75. The rate limit counts successful calls, not provider attempts
+
+**Decision.** `enforceRateLimit` counts `ai_usage` rows with `ok = true`. Defaults raised to 15/minute and 150/day.
+
+**Why.** `ai_usage` holds one row per provider *attempt*, and D72/D74 turned one user action into as many as nine Gemini attempts plus nine Groq ones. A single click during an outage blew a six-per-minute cap on its own and locked the user out of the feature that had just failed them. That was a regression introduced by the retry work, not a tuning problem.
+
+Counting successes is also the honest definition of the budget the cap protects: a failed call returns no tokens and costs nothing. One completed operation writes exactly one `ok` row whichever provider served it.
+
+The old defaults were set when one session meant one scoring call. A group discussion spends one per turn and an interview one per answer, so a normal fast exchange was being told to slow down for using the product as designed.
+
+## D76. Reading practice aligns; it does not compare position by position
+
+**Decision.** A new `reading` mode with its own `reading_pieces` table and append-only `reading_attempts`. Accuracy, pace, completion and the specific missed words are computed in `lib/reading-scoring.ts` by Levenshtein alignment with a backtrace. The model is asked one question — what the misses have in common — and nothing else.
+
+**Why alignment.** The obvious implementation walks both word lists in step and compares. It falls apart on the first skipped word: everything after it lands against the wrong slot, so dropping a single "the" reports a near-total failure. Alignment finds the cheapest set of edits instead, so a skip costs one skip and a misread is a substitution rather than a delete plus an insert.
+
+**Why a separate table.** A topic is a prompt you improvise *from* and must never read aloud; a piece is a script that only works reproduced exactly. They share nothing but a primary key, and merging them would put a filter on every topic query to avoid handing someone a passage to argue about.
+
+**Why attempts are append-only.** Rereading to watch the number move is the exercise. The session keeps the best read rather than the last, and streak credit lands on the first attempt only — twenty rereads of one twister is practice, not twenty days of it.
+
+**The limit, stated in the code and on the results screen.** The Web Speech API runs a language model over the audio and will quietly repair a slurred word in a familiar phrase — and can miss an unusual word said perfectly. Accuracy here measures how intelligibly you read *to a recogniser*. Calling it a pronunciation score would be inventing precision we do not have. Pace and completion are measured directly and are solid.
+
+Tongue twisters carry a slower pace band than passages, because rushing one is precisely how you fail it and scoring them against ordinary reading pace would reward the wrong instinct.
+
+## D77. Camera presence comes back, on geometry only
+
+**Decision.** Reverses D61. `usePresence` runs `tinyFaceDetector` + `faceExpressionNet` at 4Hz; `lib/presence-scoring.ts` summarises in-frame share, look-aways, longest absence, head drift and steadiness. Opt-in, off by default, nothing recorded or uploaded.
+
+**Why it earns its way back.** D61 dropped video as not contributing to the thesis. Whether you held the frame and how still you sat *are* part of how an interview lands, and unlike expression they are countable — which is the only test this codebase applies.
+
+**Cost.** `tinyFaceDetector` (~190KB) over SSD/MTCNN, and four detections a second rather than sixty: expression does not change meaningfully inside 250ms, and a rAF loop would spend fifteen times the CPU for the same summary. Dynamic import keeps TensorFlow out of the bundle for everyone who never enables the camera — shared JS unchanged at 102 kB, interview room +3.4 kB.
+
+**`@vladmandic/face-api`, not `face-api.js`.** Identical API surface; the original was last published in 2022 against TensorFlow.js 1.x. Weights are self-hosted from `public/models` rather than a CDN — no external runtime dependency and nothing to break under a CSP.
+
+**Absences are timed, not counted.** The detection loop competes with the main thread and drops frames under load, so a gap measured in frames would shrink exactly when the machine is busiest. Under 500ms is a blink and is not reported.
+
+**Expression stays out of the score.** `faceExpressionNet` is a seven-class classifier trained largely on posed faces, and spontaneous expression is far subtler. It is shown as a hint with that caveat on screen. Steadiness is geometry alone.
+
+## D78. Claude is not wired as a third provider
+
+**Decision.** Not integrated. Gemini → Groq stands.
+
+**Why.** A Claude Pro subscription covers the claude.ai apps and Claude Code; it grants no Developer Platform access, which is billed separately per token. So adding Claude means buying API credit — a real cost decision, not a code change, and one this project has no need for yet: two providers with backoff and cross-provider fallback already cover the outages that were actually happening.
+
+Recorded here rather than silently skipped because Haiku 4.5 is genuinely cheap ($1/$5 per million tokens in/out — roughly half a cent per scored answer, so a $5 top-up is on the order of a thousand answers). If usage ever justifies a third leg, `lib/ai/groq.ts` is the shape to copy and `tryGroqFallback` the hook to extend.
+
 ---
 
 # Open items
