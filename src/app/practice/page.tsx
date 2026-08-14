@@ -71,6 +71,7 @@ export default async function PracticePage({
       <nav className="mt-16 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
         {[
           { href: "/interview", label: "Mock interview" },
+          { href: "/read", label: "Read aloud" },
           { href: "/discuss", label: "Group discussion" },
           { href: "/discuss?mode=debate", label: "Debate" },
           { href: "/rooms", label: "Role play" },

@@ -38,7 +38,11 @@ export const practiceModeEnum = pgEnum("practice_mode", [
   "debate",
   "conversation",
   "scenario",
+  "reading",
 ]);
+
+/** Reading drills come in two shapes with different pace targets. */
+export const readingKindEnum = pgEnum("reading_kind", ["tongue_twister", "passage"]);
 
 export const sessionStatusEnum = pgEnum("session_status", [
   "created",
@@ -92,6 +96,43 @@ export const topics = pgTable(
   (table) => [
     uniqueIndex("topics_prompt_text_unique").on(table.promptText),
     index("topics_category_idx").on(table.category),
+  ],
+);
+
+/* ── reading_pieces ────────────────────────────────────────────────────────
+ * The text a reader is asked to say out loud.
+ *
+ * A separate table from `topics` rather than a `kind` column on it, because the
+ * two are opposite things: a topic is a prompt you improvise *from* and must
+ * never be read aloud; a piece is a fixed script that only works if it is
+ * reproduced exactly. They share no columns beyond a primary key, and merging
+ * them would mean every topic query carried a filter to avoid handing someone a
+ * passage to argue about.
+ */
+export const readingPieces = pgTable(
+  "reading_pieces",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: readingKindEnum("kind").notNull().default("passage"),
+    difficulty: difficultyEnum("difficulty").notNull().default("medium"),
+    title: text("title").notNull(),
+    /** The exact text to read. Scoring aligns the transcript against this. */
+    body: text("body").notNull(),
+    /** What this piece drills — "the s/sh contrast", "plosives". Shown after. */
+    focus: text("focus"),
+    /**
+     * Target words-per-minute band. Tongue twisters get a deliberately slower
+     * one: rushing a twister is precisely how you fail it, so scoring it
+     * against ordinary reading pace would reward the wrong instinct.
+     */
+    paceMin: integer("pace_min").notNull().default(140),
+    paceMax: integer("pace_max").notNull().default(170),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("reading_pieces_title_unique").on(table.title),
+    index("reading_pieces_kind_idx").on(table.kind),
   ],
 );
 
@@ -155,6 +196,48 @@ export const evaluations = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("evaluations_session_unique").on(table.sessionId)],
+);
+
+/* ── reading_attempts ──────────────────────────────────────────────────────
+ * One row per read, not per session.
+ *
+ * Rereading is the whole point of a drill — you are meant to go again and watch
+ * the number move — so attempts are append-only and the report shows the run of
+ * them. That rules out reusing `evaluations`, which is one-per-session by
+ * unique index, and whose `scores` shape is the speaking rubric rather than
+ * accuracy and pace.
+ */
+export const readingAttempts = pgTable(
+  "reading_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => practiceSessions.id, { onDelete: "cascade" }),
+    pieceId: uuid("piece_id")
+      .notNull()
+      .references(() => readingPieces.id, { onDelete: "cascade" }),
+    attempt: integer("attempt").notNull().default(1),
+    transcript: text("transcript").notNull(),
+    /** Weighted composite — computed in our code, never taken from a model. */
+    overallScore: integer("overall_score").notNull(),
+    accuracy: integer("accuracy").notNull(),
+    paceScore: integer("pace_score").notNull(),
+    completion: integer("completion").notNull(),
+    wordsPerMinute: integer("words_per_minute").notNull(),
+    /** Passage words the reader didn't land — what to practise next. */
+    stumbles: jsonb("stumbles").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    durationSeconds: integer("duration_seconds").notNull(),
+    /** The single judgement call: what the misses have in common. */
+    verdict: text("verdict"),
+    pattern: text("pattern"),
+    drill: text("drill"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("reading_attempts_slot_unique").on(table.sessionId, table.attempt),
+    index("reading_attempts_session_idx").on(table.sessionId),
+  ],
 );
 
 /* ── profiles ──────────────────────────────────────────────────────────── */
@@ -411,6 +494,8 @@ export type DiscussionTurn = typeof discussionTurns.$inferSelect;
 export type Plan = typeof plans.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type Topic = typeof topics.$inferSelect;
+export type ReadingPiece = typeof readingPieces.$inferSelect;
+export type ReadingAttempt = typeof readingAttempts.$inferSelect;
 export type PracticeSession = typeof practiceSessions.$inferSelect;
 export type Evaluation = typeof evaluations.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
