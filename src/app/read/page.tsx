@@ -1,12 +1,36 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { SubmitButton } from "@/components/ui/submit-button";
-import { Surface } from "@/components/ui/surface";
 import { requireOnboardedUser } from "@/lib/session";
 import { listPieces, startReading } from "./actions";
 
 export const metadata: Metadata = { title: "Read aloud" };
+
+/**
+ * A whole card that submits.
+ *
+ * `.material .m-liquid` rather than the `Surface` component because Surface
+ * renders a div, and a div wrapping a submit button is two targets pretending
+ * to be one. A real `<button type="submit">` gets keyboard focus, Enter and
+ * Space for free — none of which a clickable div does.
+ *
+ * No `transition-colors` and no `hover:border-*` here, deliberately. `.material`
+ * draws its edge as a masked specular hairline and sets no border-width, so a
+ * hover border-colour is a no-op; and a Tailwind `transition-colors` utility
+ * outranks `.liftable`'s `transition: transform, box-shadow`, which would make
+ * the hover lift snap instead of glide. The system's affordance here is depth,
+ * not colour — `.liftable` and `.pressable` already carry it.
+ */
+function CardButton({ children }: { children: React.ReactNode }) {
+  return (
+    <button
+      type="submit"
+      className="material m-liquid liftable pressable flex h-full w-full flex-col gap-4 rounded-[var(--radius-md)] p-6 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      {children}
+    </button>
+  );
+}
 
 const KIND_LABEL = {
   tongue_twister: "Tongue twister",
@@ -55,13 +79,13 @@ export default async function ReadingIndexPage() {
           <ul className="grid gap-3 sm:grid-cols-2">
             {group.items.map((piece) => (
               <li key={piece.id}>
+                {/* The whole card submits, not a button in the corner of it.
+                    A card that looks like one object should behave like one —
+                    and `.pressable` puts the feedback on pointer-down rather
+                    than waiting for the click to land. */}
                 <form action={startReading} className="h-full">
                   <input type="hidden" name="pieceId" value={piece.id} />
-                  <Surface
-                    material="liquid"
-                    radius="md"
-                    className="flex h-full flex-col gap-4 p-6"
-                  >
+                  <CardButton>
                     <div className="flex items-baseline justify-between gap-4">
                       <p className="t-heading">{piece.title}</p>
                       <span className="t-micro shrink-0 text-ink-4">{piece.difficulty}</span>
@@ -77,9 +101,9 @@ export default async function ReadingIndexPage() {
                         <span className="mx-2 text-ink-4">/</span>
                         {piece.paceMin}-{piece.paceMax} wpm
                       </span>
-                      <SubmitButton variant="glass">Read it</SubmitButton>
+                      <span className="t-micro text-accent">Read it</span>
                     </div>
-                  </Surface>
+                  </CardButton>
                 </form>
               </li>
             ))}

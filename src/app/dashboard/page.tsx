@@ -229,8 +229,11 @@ export default async function DashboardPage() {
                   shadow; `.liftable` handles the hover rise. */}
               <Link
                 href={room.href}
-                className={`material liftable group flex h-full flex-col justify-between gap-6 rounded-[var(--radius-lg)] p-7 hover:border-accent/40 ${
-                  room.wide ? "m-liquid border-accent/25" : "m-dense"
+                // No hover:border-* — `.material` draws its edge as a masked
+                // specular hairline and sets no border-width, so a border
+                // colour never renders. The hover affordance is `.liftable`.
+                className={`material liftable group flex h-full flex-col justify-between gap-6 rounded-[var(--radius-lg)] p-7 ${
+                  room.wide ? "m-liquid" : "m-dense"
                 }`}
               >
                 <div className="flex items-baseline justify-between gap-4">

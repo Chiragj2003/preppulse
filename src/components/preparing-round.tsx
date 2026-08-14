@@ -101,17 +101,31 @@ export function PreparingRound({
             {Array.from({ length: Math.min(questionCount, 5) }).map((_, index) => (
               <div key={index} className="flex items-center gap-4">
                 <span className="t-numeric w-5 shrink-0 text-[13px] text-ink-4">{index + 1}</span>
-                <motion.span
-                  className="h-2 rounded-full bg-ink-4/25"
-                  initial={reduceMotion ? { width: "60%" } : { width: "8%" }}
-                  animate={{ width: ["8%", "92%", "8%"] }}
-                  transition={{
-                    duration: 2.4,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: index * 0.22,
-                  }}
-                />
+                {/* scaleX, not width. Width is a layout property, so animating
+                    it runs layout and paint on every frame for every line;
+                    transform is composited and costs nothing. The full-width
+                    span with a left origin gives the same filling-line effect. */}
+                <span className="h-2 flex-1 overflow-hidden rounded-full">
+                  <motion.span
+                    className="block h-full w-full origin-left rounded-full bg-ink-4/25"
+                    initial={{ scaleX: reduceMotion ? 0.6 : 0.08 }}
+                    // Reduced motion means no looping oscillation at all — the
+                    // earlier version honoured the preference on the first
+                    // frame and then ran the infinite animation anyway, which
+                    // is the one thing the preference exists to prevent.
+                    animate={reduceMotion ? { scaleX: 0.6 } : { scaleX: [0.08, 0.92, 0.08] }}
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : {
+                            duration: 2.4,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                            delay: index * 0.22,
+                          }
+                    }
+                  />
+                </span>
               </div>
             ))}
           </div>

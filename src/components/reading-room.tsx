@@ -144,9 +144,16 @@ export function ReadingRoom({
       </div>
 
       {/* The text. Large, generously leaded — this is a thing to be read from,
-          not a paragraph to skim, and cramped type makes people stumble. */}
+          not a paragraph to skim, and cramped type makes people stumble.
+
+          Words that have NOT been read yet stay at full ink. An earlier version
+          dimmed them to `ink-4` (42% lightness) on glass so the read ones would
+          stand out, which is exactly backwards: the unread words are the ones
+          the user still has to read, and this codebase has already been bitten
+          once by faint text over a blurred surface. Only the words behind you
+          change colour. */}
       <Surface material="dense" radius="lg" refract className="mt-10 p-7 sm:p-10">
-        <p className="font-display text-[clamp(21px,3.4vw,28px)] leading-[1.75] tracking-[-0.01em]">
+        <p className="font-display text-[clamp(21px,3.4vw,28px)] leading-[1.75] tracking-[-0.01em] text-ink">
           {passageWords.map((word, index) => {
             const state = phase === "reading" ? wordState[index] : null;
             return (
@@ -159,9 +166,7 @@ export function ReadingRoom({
                       ? "var(--color-positive)"
                       : state === "substitute" || state === "delete"
                         ? "var(--color-caution)"
-                        : state === null && phase === "reading"
-                          ? "var(--color-ink-4)"
-                          : undefined,
+                        : undefined,
                 }}
               >
                 {word}{" "}
