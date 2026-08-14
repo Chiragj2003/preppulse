@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { Surface } from "@/components/ui/surface";
 import { VoiceVisualizer } from "@/components/VoiceVisualizer";
+import { PresenceMonitor } from "@/components/presence-monitor";
+import { usePresence } from "@/lib/usePresence";
 import { useVoiceSession } from "@/lib/useVoiceSession";
 import {
   MAX_ANSWER_SECONDS,
@@ -112,6 +114,15 @@ export function InterviewRoom({
   // transcript again here would find it already cleared.
   const sendRef = useRef<(spokenText?: string) => void>(() => {});
 
+  // Opt-in and off by default. It costs a camera permission and a megabyte of
+  // model, and plenty of people practise somewhere they would rather not be
+  // filmed — so it is offered, never assumed.
+  const presence = usePresence();
+  // Pulled out because `presence` is a fresh object each render while its
+  // callbacks are stable — putting the object in the dependency array below
+  // would rebuild `send` on every render and memoise nothing.
+  const { endRecording: endPresenceRecording } = presence;
+
   const voiceSession = useVoiceSession({
     sessionId,
     mode: "interview",
@@ -179,6 +190,7 @@ export function InterviewRoom({
       }
 
       voiceSession.stopSession();
+      endPresenceRecording();
       setHint(null);
       setPhase("scoring");
       setError(null);
@@ -214,7 +226,7 @@ export function InterviewRoom({
         voiceSession.speakResponse(result.data.feedback, "interviewer");
       }
     },
-    [elapsed, question?.id, sessionId, typedMode, voiceSession],
+    [elapsed, question?.id, sessionId, typedMode, voiceSession, endPresenceRecording],
   );
 
   // The voice session calls back through this ref, so it always reaches the
@@ -228,6 +240,7 @@ export function InterviewRoom({
     setError(null);
     startedAtRef.current = Date.now();
     setPhase("answering");
+    presence.beginRecording();
     void voiceSession.startSession();
   }
 
@@ -426,6 +439,24 @@ export function InterviewRoom({
 
             {hint && <p className="t-meta mt-5 text-ink-2">{hint}</p>}
 
+            {!typedMode && (
+              <div className="mt-6">
+                <PresenceMonitor
+                  videoRef={presence.videoRef}
+                  status={presence.status}
+                  live={presence.live}
+                  summary={null}
+                  onStart={() => {
+                    void (async () => {
+                      await presence.start();
+                      presence.beginRecording();
+                    })();
+                  }}
+                  onStop={presence.stop}
+                />
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => setTypedMode((v) => !v)}
@@ -491,6 +522,19 @@ export function InterviewRoom({
                 <Notes title="Fix" items={verdict.improvements} accent="var(--color-caution)" />
               </div>
             </Surface>
+
+            {presence.summary && presence.summary.samples > 0 && (
+              <div className="mt-4">
+                <PresenceMonitor
+                  videoRef={presence.videoRef}
+                  status={presence.status}
+                  live={presence.live}
+                  summary={presence.summary}
+                  onStart={() => void presence.start()}
+                  onStop={presence.stop}
+                />
+              </div>
+            )}
 
             {/* The model answer is deliberately withheld until the report.
                 Reading a perfect answer to question 3 and then answering
