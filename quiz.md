@@ -876,6 +876,99 @@ leaves the session stuck with a live mic and no way forward.
 
 ---
 
+## Fd. Reading & presence
+
+<details>
+<summary><b>Fd1. ⭐⭐</b> Reading practice compares what was said to a known text. Why isn't that a for-loop?</summary>
+
+Because a for-loop breaks on the first skipped word.
+
+Walking both word lists in step and comparing position by position means that
+once a word is dropped, every word after it lands against the wrong slot. Miss a
+single "the" in a forty-word passage and the report says you got almost nothing
+right — which is both wrong and the most demoralising possible feedback.
+
+Levenshtein alignment with a backtrace finds the cheapest set of edits instead,
+so a skip costs exactly one skip, a misread is a substitution rather than a
+delete plus an insert, and the words after the mistake still match. That is the
+whole reason the mode produces usable output.
+
+The same function runs in the browser during the read, so the words lighting up
+green cannot disagree with the final score.
+</details>
+
+<details>
+<summary><b>Fd2. ⭐</b> You report reading "accuracy". What does that number actually measure?</summary>
+
+How intelligibly you read **to a speech recogniser** — not your pronunciation.
+
+The Web Speech API runs a language model over the audio. In a familiar phrase
+like a tongue twister it will quietly repair a slurred word into the word it
+expected, and it can miss an unusual word that was said perfectly. So a high
+accuracy is a good sign rather than proof of clean articulation.
+
+That caveat is written in the scoring module and repeated on the results screen.
+Calling it a pronunciation score would be inventing precision we do not have —
+and the fix isn't to hide the number, it's to say what it is worth. Pace and
+completion, by contrast, are measured directly and are trustworthy.
+</details>
+
+<details>
+<summary><b>Fd3.</b> Why do reading attempts stack up instead of overwriting?</summary>
+
+Rereading to watch the number move is the exercise. A drill you can only attempt
+once is a test.
+
+So attempts are append-only, the session keeps the **best** read rather than the
+last (a bad final take shouldn't erase a good one), and streak credit lands on
+the first attempt only — twenty rereads of one twister is practice, not twenty
+days of practice.
+</details>
+
+<details>
+<summary><b>Fd4. ⭐</b> Camera tracking was explicitly dropped in D61. What changed?</summary>
+
+The user asked for it, and it turned out to clear the bar D61 was really
+applying. D61's reasoning was that video didn't contribute to the thesis — but
+whether you held the frame and how still you sat genuinely are part of how an
+interview lands, and unlike expression they are **countable**.
+
+So it came back on those terms only: in-frame share, look-aways, longest
+absence, head drift, and a steadiness composite built from geometry alone.
+Expression is displayed as a hint with a caveat and never enters a score,
+because `faceExpressionNet` is a seven-class classifier trained largely on posed
+faces and spontaneous expression is far subtler than what it learned.
+</details>
+
+<details>
+<summary><b>Fd5. ⭐</b> Why are look-aways measured in milliseconds rather than frames?</summary>
+
+Because the detection loop is a `setInterval` competing with the main thread,
+and it drops frames under load. A gap measured in frames would therefore *shrink*
+exactly when the machine is busiest — the app would under-report distraction
+precisely when the user's laptop is struggling.
+
+Reading the gap off sample timestamps makes it wall-clock truth regardless of how
+many frames survived. Anything under 500ms is treated as a blink or a detector
+miss and is not reported, because telling someone they "looked away" when they
+blinked destroys trust in every other number on the page.
+</details>
+
+<details>
+<summary><b>Fd6.</b> How does a megabyte of TensorFlow not show up in the bundle?</summary>
+
+A dynamic `import()` inside the enable path. The library and both model files
+load the first time someone switches the camera on, cached in a module-level
+promise so toggling off and on doesn't re-fetch half a megabyte.
+
+Measured: shared JS unchanged at 102 kB, interview room +3.4 kB — the monitor
+component and the hook, none of it TensorFlow. Weights are self-hosted from
+`public/models` rather than a CDN, so there's no external runtime dependency and
+nothing to break under a content security policy.
+</details>
+
+---
+
 ## F. Design system
 
 <details>
@@ -1110,6 +1203,7 @@ Rate yourself honestly on each area:
 | Scoring philosophy | | | |
 | Interview engine | | | |
 | Voice & turn-taking | | | |
+| Reading & presence | | | |
 | GD & debate | | | |
 | Conversation & scenarios | | | |
 | Admin & cost | | | |

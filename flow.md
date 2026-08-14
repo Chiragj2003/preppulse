@@ -426,7 +426,7 @@ would be indefensible.
 **Every AI call, without exception:**
 
 ```
-enforceRateLimit(userId)      count ai_usage rows in rolling windows
+enforceRateLimit(userId)      count ai_usage rows WHERE ok — see below
         │
     call provider             3 attempts per model, 0.8/1.6/3.2s backoff
         │                     on 429, 5xx, timeout, connection reset
@@ -441,6 +441,13 @@ Retrying is not optional politeness: Gemini answers `503 "experiencing high
 demand"` often enough that treating it as fatal took down the whole
 start-interview flow. Failing fast on the rest matters equally — a wrong API key
 would otherwise spend twelve calls learning what the first response said.
+
+**The limiter counts successes, not attempts.** `ai_usage` gets one row per
+provider attempt, so with retries and fallback a single answer can write up to
+eighteen. Counting all of them meant one click during an outage blew a
+six-per-minute cap by itself. A failed call returns no tokens and costs nothing,
+so only `ok = true` rows consume the budget — exactly one per completed
+operation, whichever provider served it.
 
 **Cross-provider fallback.** When every Gemini model is exhausted, the call goes
 to Groq rather than to the user as an error.
@@ -514,6 +521,8 @@ a manual submit appear.
 | `/practice` | required | Daily Roll reveal |
 | `/practice/[id]` | required | Timer, waveform, transcript |
 | `/practice/[id]/report` | required | Coaching, then measurements |
+| `/read` | required | Pick a tongue twister or passage |
+| `/read/[id]` | required | Read aloud; words light up as they land, result in place |
 | `/interview-prep` | required | Skills text and/or resume upload |
 | `/interview` | required | Persona, role, question count, focus technologies |
 | `/interview/[id]` | required | One question at a time, hands-free, score each |
