@@ -236,8 +236,19 @@ export default async function HomePage() {
           <Link href="/pricing" className="t-meta inline-flex min-h-11 items-center text-ink-4 transition-colors hover:text-ink-2">
             Pricing
           </Link>
+          <Link href="/diagnostics" className="t-meta inline-flex min-h-11 items-center text-ink-4 transition-colors hover:text-ink-2">
+            Device check
+          </Link>
+          {/* This used to read "Audio never leaves your browser", which is not
+              true and is the kind of claim you must not make loosely. We never
+              receive or store audio — but transcription runs through the
+              browser's own speech recogniser, and Chrome's implementation
+              sends the audio to Google to do it. What PrepPulse stores is the
+              transcript; what the browser does with the audio is the browser's
+              policy, not ours to promise away. */}
           <p className="t-meta text-ink-4">
-            Audio never leaves your browser. Only the transcript is stored.
+            We never receive or store your audio — only the transcript. Speech-to-text is done by
+            your browser&apos;s own recogniser.
           </p>
         </div>
       </footer>
