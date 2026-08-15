@@ -44,12 +44,12 @@ export function Notifications() {
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative flex h-8 w-8 items-center justify-center rounded-full text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 transition-colors"
+        className="relative flex size-11 items-center justify-center rounded-full text-ink-2 hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 transition-colors"
         aria-label="Notifications"
       >
         <Bell className="size-4" />
         {notifications.some(n => n.isUnread) && (
-          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-accent ring-2 ring-void" />
+          <span className="absolute right-3 top-3 size-2 rounded-full bg-accent ring-2 ring-void" />
         )}
       </button>
 

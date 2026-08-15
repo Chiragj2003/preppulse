@@ -140,7 +140,7 @@ export function VoiceVisualizer({
               <button
                 type="button"
                 onClick={onToggleMic}
-                className={`p-2 rounded-full border transition-all ${
+                className={`grid size-11 place-items-center rounded-full border transition-all ${
                   isMicActive
                     ? "bg-accent/15 border-accent/40 text-accent hover:bg-accent/25"
                     : "bg-[var(--color-critical)]/15 border-[var(--color-critical)]/40 text-[var(--color-critical)] hover:bg-[var(--color-critical)]/25"
@@ -155,7 +155,7 @@ export function VoiceVisualizer({
               <button
                 type="button"
                 onClick={onStop}
-                className="p-2 rounded-full bg-white/[0.06] border border-line text-ink-3 hover:text-ink transition-colors"
+                className="grid size-11 place-items-center rounded-full bg-white/[0.06] border border-line text-ink-3 hover:text-ink transition-colors"
                 aria-label="Stop audio session"
               >
                 <Square className="size-3.5 fill-current" />
@@ -165,7 +165,7 @@ export function VoiceVisualizer({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="p-2 rounded-full bg-white/[0.06] border border-line text-ink-3 hover:text-ink transition-colors"
+              className="grid size-11 place-items-center rounded-full bg-white/[0.06] border border-line text-ink-3 hover:text-ink transition-colors"
               title="Toggle Live Transcript View"
             >
               <MessageSquare className="size-3.5" />

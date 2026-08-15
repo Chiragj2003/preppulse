@@ -331,7 +331,7 @@ export function DiscussionRoom({
       {/* Floating Audio Control & Visualizer Dock */}
       {!done ? (
         <div
-          className="fixed inset-x-0 bottom-0 px-4 pb-4 sm:px-6 sm:pb-6"
+          className="pb-safe fixed inset-x-0 bottom-0 px-4 sm:px-6"
           style={{ zIndex: "var(--z-sticky)" }}
         >
           <div className="mx-auto max-w-3xl space-y-3">
