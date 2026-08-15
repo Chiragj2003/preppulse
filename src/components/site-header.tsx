@@ -16,7 +16,7 @@ export async function SiteHeader() {
 
   return (
     <header
-      className="fixed inset-x-0 top-0 px-4 pt-4 sm:px-6 sm:pt-5"
+      className="pt-safe fixed inset-x-0 top-0 px-4 sm:px-6"
       style={{ zIndex: "var(--z-sticky)" }}
     >
       {/* `.m-clear` is the floating-chrome material: blur, saturation, the
@@ -27,7 +27,7 @@ export async function SiteHeader() {
         <div className="flex items-center">
           <Link
             href="/"
-            className="pressable group flex items-center gap-2.5"
+            className="pressable group flex min-h-11 items-center gap-2.5"
             aria-label="PrepPulse home"
           >
             <span className="relative grid size-8 shrink-0 place-items-center">
@@ -66,7 +66,7 @@ export async function SiteHeader() {
               <ThemeToggle />
               <Link
                 href="/sign-in"
-                className="pressable rounded-full bg-ink px-5 py-2.5 text-[14px] font-medium text-void hover:brightness-95"
+                className="pressable inline-flex min-h-11 items-center rounded-full bg-ink px-5 text-[14px] font-medium text-void hover:brightness-95"
               >
                 Sign in
               </Link>

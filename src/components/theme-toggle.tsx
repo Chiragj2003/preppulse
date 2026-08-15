@@ -34,7 +34,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="pressable relative grid size-9 place-items-center overflow-hidden rounded-full border border-line-bright/60 bg-white/5 text-ink-2 hover:bg-white/10 hover:text-ink"
+      className="pressable relative grid size-11 place-items-center overflow-hidden rounded-full border border-line-bright/60 bg-white/5 text-ink-2 hover:bg-white/10 hover:text-ink"
       aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
       title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
     >

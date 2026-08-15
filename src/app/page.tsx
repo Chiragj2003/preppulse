@@ -189,7 +189,7 @@ export default async function HomePage() {
             </p>
             <Link
               href={session?.user ? "/interview-prep" : "/sign-in?next=/interview-prep"}
-              className="group inline-flex items-center gap-2.5 text-[15px] text-ink transition-colors hover:text-accent"
+              className="group inline-flex min-h-11 items-center gap-2.5 text-[15px] text-ink transition-colors hover:text-accent"
             >
               <span className="border-b border-ink-4 pb-1 transition-colors group-hover:border-accent">
                 Set up interview prep
@@ -222,7 +222,7 @@ export default async function HomePage() {
             </ol>
 
             <p className="t-meta mt-8">
-              <Link href={start} className="text-accent hover:underline">
+              <Link href={start} className="inline-flex min-h-11 items-center text-accent hover:underline">
                 Put your name on it
               </Link>
             </p>
@@ -233,7 +233,7 @@ export default async function HomePage() {
       <footer className="flex flex-col gap-3 border-t border-line py-10 sm:flex-row sm:items-center sm:justify-between">
         <p className="t-micro">PrepPulse</p>
         <div className="flex flex-wrap items-center gap-6">
-          <Link href="/pricing" className="t-meta text-ink-4 transition-colors hover:text-ink-2">
+          <Link href="/pricing" className="t-meta inline-flex min-h-11 items-center text-ink-4 transition-colors hover:text-ink-2">
             Pricing
           </Link>
           <p className="t-meta text-ink-4">

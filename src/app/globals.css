@@ -390,6 +390,27 @@
     }
   }
 
+  /* Safe areas. `max()` keeps the existing spacing everywhere the inset is
+     zero — which is every desktop browser and iOS Safari without
+     `viewport-fit=cover` — and only grows past it on a device that actually
+     reserves the room: a notch above, a home indicator below. Without this the
+     bottom dock sits under the home indicator once the app is installed to a
+     home screen, which is exactly where a phone user would put it. */
+  .pt-safe {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  @media (min-width: 640px) {
+    .pt-safe {
+      padding-top: max(1.25rem, env(safe-area-inset-top));
+    }
+    .pb-safe {
+      padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    }
+  }
+
   /* =========================================================================
      ATMOSPHERE
      ========================================================================= */
