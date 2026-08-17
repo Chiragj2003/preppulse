@@ -41,6 +41,7 @@ export type PresenceStatus =
   | "tracking"
   | "denied"
   | "unsupported"
+  | "insecure"
   | "error";
 
 export interface LiveFrame {
@@ -82,6 +83,10 @@ export function usePresence() {
   const [status, setStatus] = useState<PresenceStatus>("off");
   const [live, setLive] = useState<LiveFrame>({ present: false, top: null, expressions: {} });
   const [summary, setSummary] = useState<PresenceSummary | null>(null);
+  // What actually went wrong, for the one status ("error") that is otherwise
+  // a dead end. Without this, a failed model fetch and a camera already in
+  // use by another tab are indistinguishable — both just say "unavailable."
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -102,14 +107,33 @@ export function usePresence() {
     if (videoRef.current) videoRef.current.srcObject = null;
     recordingRef.current = false;
     setStatus("off");
+    setErrorDetail(null);
     setLive({ present: false, top: null, expressions: {} });
   }, []);
 
   const start = useCallback(async () => {
+    // Re-entrant clicks — a slow model load plus an impatient second click on
+    // "Turn on" — used to fire a second getUserMedia request on top of the
+    // first, leaking a MediaStream that nothing ever stopped. Every non-off,
+    // non-terminal status means a start is already in flight or done.
+    if (status === "loading" || status === "requesting" || status === "tracking") return;
+
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setStatus("unsupported");
       return;
     }
+
+    // The single most common reason a camera silently "doesn't work": the
+    // page isn't secure. Browsers refuse getUserMedia outright on http, and
+    // the resulting error is often a generic SecurityError that reads exactly
+    // like a permission block — checking this directly means the message can
+    // say what is actually wrong instead of "camera unavailable."
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setStatus("insecure");
+      return;
+    }
+
+    setErrorDetail(null);
 
     try {
       setStatus("loading");
@@ -127,6 +151,7 @@ export function usePresence() {
       if (!video) {
         stream.getTracks().forEach((t) => t.stop());
         setStatus("error");
+        setErrorDetail("The camera preview wasn't ready. Try again.");
         return;
       }
 
@@ -182,11 +207,29 @@ export function usePresence() {
       }, DETECT_INTERVAL_MS);
     } catch (error) {
       const name = (error as { name?: string })?.name;
-      setStatus(name === "NotAllowedError" || name === "SecurityError" ? "denied" : "error");
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setStatus("denied");
+      } else {
+        setStatus("error");
+        // Distinguish what actually failed for anyone debugging this later:
+        // "NotFoundError" is no camera present, "NotReadableError" is another
+        // app or tab holding the device, and anything else is most likely the
+        // face-detection model failing to load — three different problems
+        // that a bare "unavailable" status collapses into one dead end.
+        setErrorDetail(
+          name === "NotFoundError"
+            ? "No camera was found on this device."
+            : name === "NotReadableError"
+              ? "The camera is in use by another app or browser tab."
+              : `Couldn't start tracking (${name ?? "unknown error"}): ${message}`,
+        );
+      }
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-  }, []);
+  }, [status]);
 
   /** Begin collecting samples. Tracking can be on without recording. */
   const beginRecording = useCallback(() => {
@@ -211,6 +254,7 @@ export function usePresence() {
     status,
     live,
     summary,
+    errorDetail,
     isTracking: status === "tracking",
     start,
     stop,

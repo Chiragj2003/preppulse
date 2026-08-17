@@ -781,9 +781,9 @@ The "Cut in" button went the same way. It was a control for something that alrea
 
 ## D68. The model answer is withheld until the report
 
-**Decision.** `analyseAnswer` still generates `idealAnswer` on every answer and it is still stored, but the room shows only the score, the feedback and the strengths/fixes. The whole set appears in the report, question by question, next to what you actually said.
+**Decision.** `analyseAnswer` generates `idealAnswer` for every question and it is stored, but nothing about it — or about the score, the feedback, or the strengths/fixes — appears in the room. The room now shows only "Saved" once a transcript lands; the whole set appears together on the report, question by question, next to what you actually said. (D79 later moved *when* this generation happens — once, in a batch, after the session ends — but not the rule that the room itself never shows it.)
 
-**Why.** Reading a perfect answer to question 3 and then answering question 4 is how you end up practising recall instead of thinking — the phrasing you just read comes back out of your mouth, and the score measures your short-term memory. Generating it immediately is still right: it costs one call either way, and the report needs it.
+**Why.** Reading a perfect answer to question 3 and then answering question 4 is how you end up practising recall instead of thinking — the phrasing you just read comes back out of your mouth, and the score measures your short-term memory.
 
 ## D69. Interview focus areas are tagged and counted, not string-matched
 
@@ -898,6 +898,48 @@ Tongue twisters carry a slower pace band than passages, because rushing one is p
 **Why.** A Claude Pro subscription covers the claude.ai apps and Claude Code; it grants no Developer Platform access, which is billed separately per token. So adding Claude means buying API credit — a real cost decision, not a code change, and one this project has no need for yet: two providers with backoff and cross-provider fallback already cover the outages that were actually happening.
 
 Recorded here rather than silently skipped because Haiku 4.5 is genuinely cheap ($1/$5 per million tokens in/out — roughly half a cent per scored answer, so a $5 top-up is on the order of a thousand answers). If usage ever justifies a third leg, `lib/ai/groq.ts` is the shape to copy and `tryGroqFallback` the hook to extend.
+
+## D79. Scoring moved from per-answer to end-of-session, reversing D28
+
+**Decision.** `submitAnswer` is gone. The room now calls `submitTranscript` after every question — an insert with no AI call, `status: "pending"` — and only calls the model once, in a batch, after the candidate answers the last question. `analyseSession` scores every pending answer for the session with bounded concurrency (3 at a time via `mapWithConcurrency`), then `finishInterview` averages what scored and closes the session.
+
+**Why this reverses D28.** D28's case for immediate scoring was real: a candidate who rambled on question 3 should find out before question 4. But live scoring also means every question after the first pays a 2-6 second model round trip *inside* the flow of answering — the interview stops to be graded, repeatedly, which is not how a real interview feels and not what was asked for. Between "catch it while it's fresh" and "let the interview run uninterrupted," this rewrite chose the second, on direct instruction: judgement happens once, at the end, and the report is where it belongs.
+
+**Why a status column, not just a nullable score.** `pending` / `scored` / `failed` makes "still needs scoring" and "we tried and it broke" two different, queryable states instead of two flavours of `NULL`. `analyseSession` only touches `pending` rows, so it is safe to call twice — a retried batch never re-scores an answer that already succeeded.
+
+**Why `scoreOneAnswer` never throws.** One provider hiccup on question 6 of 10 used to be able to sink a whole batch scored with `Promise.all`. `scoreOneAnswer` catches its own failure and writes `status: "failed"` with a reason instead of rejecting, so `mapWithConcurrency` always finishes and the other nine answers are unaffected. `rescoreAnswer` reruns the same helper for one question, driven by a button on the report — see `rescore-button.tsx`.
+
+**The defensive rule this forced.** `status` is written by application code, so it can lag reality — a row inserted by code from before this migration landed with a real `overall_score` but the column's default of `pending`, purely a deploy-timing artifact (old code writing new columns). Every downstream reader (`analyseSession`'s pending-filter, `finishInterview`'s scored-filter, the report page) therefore treats `overallScore !== null` as the actual source of truth for "is this scored," and uses `status === 'failed'` only for the distinct "offer a retry button" signal. `status` is a UI/scheduling hint, not the ground truth.
+
+## D80. Difficulty is assigned positionally, not requested and trusted
+
+**Decision.** `difficultyBreakdown(count)` computes an exact `{easy, medium, hard}` split for a question count using fixed shares (40/35/25) and the largest-remainder method, so the counts always sum to `count` with no rounding leftover. `difficultySlots()` expands that into an ordered array, and each generated question is stamped `difficulty: slots[index]` — by its position in the array the model returned, not by whatever difficulty label the model put in its own JSON.
+
+**Why not just tell the model the ratio and trust it.** Because that turns the breakdown into a hope instead of a guarantee — the same reasoning as D6's focus-area tagging. A prompt instruction is a strong nudge, not a count. Assigning positionally means the stored distribution is correct by construction: for 8 questions it is always exactly 3 easy / 3 medium / 2 hard, never "close to it."
+
+**Why fixed shares rather than a lookup table per count.** The user's own examples (3/3/2 at 8, 4/4/2 at 10) fall out of 40/35/25 with largest-remainder rounding without being special-cased — verified for every count 1 through 20 in `interview-scoring.test.ts`. One formula that happens to match the requested numbers beats a table that would need a new row for every question-count option the setup page offers.
+
+## D81. General practice is a real mode, not a degraded one
+
+**Decision.** `useBackground` is an explicit boolean on the session config, chosen at setup, not inferred from whether a resume exists. When it is `false`, `generateQuestions` is told nothing about the candidate — no resume text, no skills description — and is explicitly instructed not to reference any project, employer, or personal detail even if one leaked in through context. `focusedCount` becomes the full question count rather than the usual majority share, because with no background to draw the rest from, every question has to come from the chosen technologies.
+
+**Why this existed as a bug worth fixing.** The setup page used to hard-gate on having a resume on file — no resume, no interview — and even with one, every question pulled from it whether the candidate wanted that or not. Someone who wants plain C# and JavaScript practice was being forced through a resume upload and then examined on their own projects anyway. That is a mode the product never actually offered: general, technology-only practice.
+
+**Why the toggle lives next to a visible "on file" summary rather than being a bare radio pair.** Choosing "based on my background" should mean something concrete and inspectable, not a leap of faith — the setup screen now shows the parsed resume's role and skills (or the raw skills text) right above the choice, with a link to change it.
+
+## D82. "Be more specific" is banned from improvement feedback
+
+**Decision.** The `improvements` prompt instruction now requires each bullet to name the actual missing content — the specific technique, term, or fact a strong answer would have included — not an instruction to go elaborate. A candidate who says "I optimized the query" without saying how gets back "name the actual fix: an index on the join column, or replacing repeated lookups with a single JOIN"; one who mentions joins without saying which kind gets "state which join and why — INNER if unmatched rows should be dropped, LEFT if the left side must be preserved."
+
+**Why.** Generic coaching language ("be more specific," "elaborate on your approach") tells the candidate that something is missing without telling them what — which is not something you can act on if you didn't already know the answer, and if you already knew it you wouldn't have given a vague one. The bar in the prompt is now explicit: write the bullet so it could be pasted into the next attempt almost verbatim.
+
+## D83. The camera bug was three separate failures, not one
+
+**Decision.** Reported as "camera stops working," this was actually: (1) `<PresenceMonitor>` nested inside per-phase JSX, torn down and remounted on every phase change, silently detaching the live `MediaStream` from the new `<video>` element since `usePresence` only assigns `srcObject` once, inside `start()`; (2) no re-entry guard on `start()`, so a slow model load plus an impatient second click on "Turn on" could fire two concurrent `getUserMedia` calls and leak a stream; (3) every non-permission failure — no camera present, camera held by another tab, the face-model fetch failing, running on a non-secure origin — collapsed into one bare `error` status with no diagnostic text anywhere in the UI.
+
+**Fixes, one per cause.** `<PresenceMonitor>` now renders unconditionally for the room's whole lifetime and is hidden with a CSS class between questions instead of unmounted. `start()` returns immediately if a start is already in flight (`loading`/`requesting`/`tracking`). The catch block now distinguishes `NotFoundError`, `NotReadableError`, an explicit `window.isSecureContext` check before anything else runs (added as its own early-return `insecure` status, since browsers refuse `getUserMedia` outright over http with an error that reads identically to a permission denial), and everything else gets the real error name and message surfaced as `errorDetail`, rendered on the panel.
+
+**Why this is worth three fixes instead of one.** A single bug report can be three bugs wearing one symptom. Fixing only the most obvious cause (the remount) would have left the diagnostic dead-end in place for the next person whose camera failed for a different reason.
 
 ---
 

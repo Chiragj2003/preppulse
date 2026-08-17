@@ -1,10 +1,11 @@
 import { z } from "zod";
 
 import { AppError } from "@/lib/errors";
-import { weightedAnswerScore } from "@/lib/interview-scoring";
+import { difficultyBreakdown, weightedAnswerScore } from "@/lib/interview-scoring";
 import { clamp } from "@/lib/scoring";
 import type {
   AnswerScores,
+  Difficulty,
   InterviewerPersona,
   Language,
   QuestionKind,
@@ -113,6 +114,25 @@ const QuestionsSchema = z.object({
     .min(1),
 });
 
+/**
+ * Every question the model must write, one row per slot, computed entirely
+ * in code from `difficultyBreakdown` before the prompt is built.
+ *
+ * The model is told which difficulty belongs at which position and asked to
+ * fill it — it is not asked to self-report a difficulty and trusted. Difficulty
+ * is a quota, not a judgement call, and quotas belong in code: a model-reported
+ * label can drift from what was actually asked for, and nothing downstream
+ * would ever notice. Assigning by position after the fact means the stored
+ * distribution is exactly right by construction, every time.
+ */
+function difficultySlots(breakdown: { easy: number; medium: number; hard: number }): Difficulty[] {
+  return [
+    ...Array<Difficulty>(breakdown.easy).fill("easy"),
+    ...Array<Difficulty>(breakdown.medium).fill("medium"),
+    ...Array<Difficulty>(breakdown.hard).fill("hard"),
+  ];
+}
+
 const PERSONA_VOICE: Record<InterviewerPersona, string> = {
   friendly:
     "You are warm and encouraging. Questions are open and give the candidate room to think.",
@@ -139,26 +159,59 @@ export async function generateQuestions(input: {
   count: number;
   role: string;
   background: string;
+  /**
+   * Whether the background text above is even relevant to this round.
+   *
+   * Off is for someone who wants to drill a language or framework in the
+   * general case — "ask me C# and JavaScript basics" — without the round
+   * turning into an audit of their own resume. It changes what gets sent to
+   * the model, not just an instruction the model can quietly ignore: with
+   * this off, `background` is never included in the prompt at all.
+   */
+  useBackground: boolean;
   /** Technologies the candidate chose at setup. Empty means cover the background broadly. */
   focusAreas?: string[];
   language?: Language;
 }) {
   const focus = (input.focusAreas ?? []).filter((area) => area.trim().length > 0);
+  const slots = difficultySlots(difficultyBreakdown(input.count));
 
-  // How many questions must land on the chosen technologies. Counted here, in
-  // code, rather than described to the model as "most" — a share the model
-  // interprets is a share it will quietly get wrong, and the candidate asked
-  // for these topics specifically.
-  const focusedCount = focus.length > 0 ? Math.max(focus.length, Math.ceil(input.count * 0.6)) : 0;
+  // With no background in play, the focus list is the only thing left to
+  // write questions about — so it drives every question, not merely most of
+  // them. With a background, it still gets the weighted majority it always
+  // has: the candidate named these topics on purpose.
+  const focusedCount =
+    focus.length === 0
+      ? 0
+      : input.useBackground
+        ? Math.max(focus.length, Math.ceil(input.count * 0.6))
+        : input.count;
 
   const focusRule =
     focus.length > 0
       ? `\nTHE CANDIDATE ASKED TO BE TESTED ON: ${focus.join(", ")}
 - At least ${Math.min(focusedCount, input.count)} of the ${input.count} questions must be squarely about those topics, and every one of them must be covered at least once.
-- Go past definitions. Ask about trade-offs, failure modes, and decisions they made — the things someone who has actually used it can answer and someone who has only read about it cannot.
-- The remaining questions cover the rest of their background as usual.
+- Go past definitions. Ask about trade-offs, failure modes, and how a real decision gets made — the things someone who has actually used it can answer and someone who has only read about it cannot.
+${input.useBackground ? "- The remaining questions cover the rest of their background as usual." : ""}
 - Set "focusArea" to the exact topic string from that list when a question tests it, and null otherwise. Copy the string exactly — it is matched, not read.\n`
       : "";
+
+  const difficultyRule = `\nEach question has a required difficulty, in this exact order — write question 1 to match slot 1, question 2 to match slot 2, and so on:
+${slots.map((tier, i) => `${i + 1}. ${tier}`).join("\n")}
+- easy: a single well-known concept: a definition, a common API, a basic distinction. Answerable in a sentence or two by anyone who has genuinely used this.
+- medium: requires connecting two things, or a "how would you" that has more than one reasonable answer.
+- hard: trade-offs, failure modes, or a scenario with a wrong-seeming right answer. Not just "the same thing but more obscure" — genuinely requires judgement.
+- "Not that hard" only holds if the earlier slots are actually easy. A round that opens hard has failed regardless of what the later questions look like.\n`;
+
+  const backgroundBlock = input.useBackground
+    ? `The candidate's background:
+"""
+${input.background.slice(0, 6000)}
+"""
+`
+    : `This candidate asked for general practice, not a review of their own history. Do NOT reference any project, employer, dataset, metric, or personal detail — even if some appear below, they are off-limits for this round. Write the kind of question a textbook or a course quiz would ask: about the technology itself, not about what this specific person has done with it.
+${input.background ? `(For your own context only, never to be referenced: ${input.background.slice(0, 400)})` : ""}
+`;
 
   const result = await callGemini({
     parts: [
@@ -167,16 +220,11 @@ export async function generateQuestions(input: {
 
 ${PERSONA_VOICE[input.persona]}
 
-The candidate's background:
-"""
-${input.background.slice(0, 6000)}
-"""
-${focusRule}
+${backgroundBlock}${focusRule}${difficultyRule}
 Write exactly ${input.count} interview questions for this specific person.
 
 Rules:
-- Ground them in the background above. Reference their actual projects, tools and claims.
-- Open with something answerable to settle nerves, then go deeper.
+${input.useBackground ? "- Ground them in the background above. Reference their actual projects, tools and claims.\n" : ""}- Open with something answerable to settle nerves, then go deeper — the difficulty order above already does this; don't undercut it with a hard opener.
 - Mix kinds: behavioural, technical, situational, motivational. Weight toward what this role really tests.
 - One question each. No multi-part questions with "and also".
 - Never ask "tell me about yourself" — it is the one question everyone has already rehearsed.
@@ -205,6 +253,8 @@ Return ONLY JSON:
     position: index,
     question: q.question,
     kind: q.kind as QuestionKind,
+    // Positional, not the model's own label — see difficultySlots.
+    difficulty: slots[index] ?? "medium",
     rationale: q.rationale,
     focusArea: q.focusArea ? (allowed.get(q.focusArea.trim().toLowerCase()) ?? null) : null,
   }));
@@ -260,11 +310,18 @@ const AnswerSchema = z.object({
 });
 
 /**
- * Analyses one answer the moment it is given, rather than banking everything
- * until the end. This is the piece the plan flagged as trickiest, and the
- * reason is timing: a candidate who rambled on question 3 should find out
- * before they answer question 4, otherwise the session teaches them nothing
- * until it is over.
+ * Scores one answer against one question. Pure with respect to *when* it
+ * runs — the interview room calls this once per question in a batch after
+ * the whole session is over, not live after each answer.
+ *
+ * That is a reversal of the original design, which scored live so a candidate
+ * who rambled on question 3 would find out before question 4. In practice
+ * that meant every "next question" click sat behind a model call — the
+ * candidate loses their conversational momentum waiting on a network request
+ * between each answer, in a mode whose whole point is momentum. Deferring the
+ * judgement to the end keeps the interview itself uninterrupted; see
+ * `analyseSession` in app/interview/actions.ts for the batch that calls this
+ * once per question after the candidate is done answering.
  */
 export async function analyseAnswer(input: {
   userId: string;
@@ -310,7 +367,9 @@ Score 0-100 on four dimensions. Be fair but honest: 50 is an average attempt, 75
 Then write:
 - feedback: two sentences, second person, on how that answer would have landed in a real room.
 - strengths: 1-3 specific things they did well. Quote their words where you can.
-- improvements: 1-3 concrete fixes. What to do differently, not just what was wrong.
+- improvements: 1-3 fixes, and each one MUST contain the actual missing content, not just an instruction to elaborate. "Be more specific about your optimization" is not acceptable — it tells them a gap exists without telling them what goes in it, and they cannot use that to answer better next time.
+  Name the real thing: the specific technique, term, or fact a strong answer would have included. If they said "I optimized the query" without saying how, your bullet supplies the how — e.g. "Name the actual fix: an index on the join column, or replacing repeated lookups with a single JOIN instead of N+1 queries." If they mentioned joins but not which kind or why, say which kind and why: "State which join you used and why — an INNER JOIN if unmatched rows should be dropped, a LEFT JOIN if the left side must be preserved even with no match."
+  Write it so the candidate could paste your bullet into their next attempt almost verbatim. If you cannot name the specific missing content because the transcript genuinely gives no hook to hang it on, say what a strong answer to this exact question would have included instead — never leave a bullet that only says something was missing.
 - idealAnswer: a model answer to this question, written in first person as if the candidate gave it. ${star} Use their real background where the transcript gives you something to work with, and keep it to a spoken length — around 150 words.
 
 ${LANGUAGE_NOTE[input.language ?? "en"]}

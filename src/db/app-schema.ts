@@ -29,6 +29,7 @@ import type {
   Scores,
   SessionConfig,
 } from "@/lib/types";
+import type { PresenceSummary } from "@/lib/presence-scoring";
 import { users } from "./auth-schema";
 
 export const practiceModeEnum = pgEnum("practice_mode", [
@@ -59,6 +60,20 @@ export const aiProviderEnum = pgEnum("ai_provider", ["groq", "gemini"]);
 
 /** How the answer reached us. Typed answers have no measurable speaking pace. */
 export const inputModeEnum = pgEnum("input_mode", ["speech", "typed"]);
+
+/**
+ * Where one interview answer sits in the deferred-scoring pipeline.
+ *
+ * Scoring moved from "the moment the answer is given" to "once the whole
+ * interview is over" — see the note on `analyseAnswer` in lib/ai/interview.ts
+ * for why. That means an answer row can now exist before it has a score, and
+ * a batch of ten model calls run back-to-back is more likely to have one fail
+ * than ten calls spread across ten minutes ever was. `pending`/`failed` make
+ * both states explicit instead of inferring them from a null `overall_score`,
+ * which is indistinguishable from "not analysed yet" vs "analysed and
+ * rejected" vs "a bug forgot to set it."
+ */
+export const answerStatusEnum = pgEnum("answer_status", ["pending", "scored", "failed"]);
 
 /** Interviewer temperament. Changes the system prompt, not the scoring. */
 export const personaEnum = pgEnum("interviewer_persona", [
@@ -164,6 +179,17 @@ export const practiceSessions = pgTable(
     shareSlug: text("share_slug").unique(),
     sharedAt: timestamp("shared_at", { withTimezone: true }),
     durationSeconds: integer("duration_seconds"),
+    /**
+     * Camera presence for the whole session, not per question.
+     *
+     * Tracking used to restart every question (see the interview room
+     * history) and its summary was computed client-side and then discarded —
+     * never sent to the server, never shown again after the question it
+     * belonged to scrolled away. One continuous recording across the session,
+     * persisted once here, means the numbers survive to the report and a
+     * reload doesn't lose them.
+     */
+    presenceSummary: jsonb("presence_summary").$type<PresenceSummary>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
@@ -329,6 +355,15 @@ export const interviewQuestions = pgTable(
     position: integer("position").notNull(),
     question: text("question").notNull(),
     kind: questionKindEnum("kind").notNull().default("behavioural"),
+    /**
+     * How many of each difficulty a round gets is computed in code from the
+     * question count (see `difficultyBreakdown` in lib/ai/interview.ts) — the
+     * model is told the exact quota per question, not asked to use its
+     * judgement about the mix. This column is where that quota is checked:
+     * the model also labels each question it writes, and a mismatched count
+     * is a bug worth being able to see, not something to trust blindly.
+     */
+    difficulty: difficultyEnum("difficulty").notNull().default("medium"),
     /** Why this question was chosen for this candidate — shown in the report. */
     rationale: text("rationale"),
     /**
@@ -363,10 +398,18 @@ export const interviewAnswers = pgTable(
     attempt: integer("attempt").notNull().default(1),
     transcript: text("transcript").notNull(),
     inputMode: inputModeEnum("input_mode").notNull().default("speech"),
-    /** content / clarity / relevance / structure, 0-100 each. */
-    scores: jsonb("scores").$type<AnswerScores>().notNull(),
-    overallScore: integer("overall_score").notNull(),
-    feedback: text("feedback").notNull(),
+    /**
+     * Written the moment the candidate finishes speaking, before any model
+     * call — see the note on `answerStatusEnum`. `scored` is set once
+     * `analyseAnswer` succeeds; `failed` if it doesn't, with the reason kept
+     * so the report can offer a real retry instead of a dead end.
+     */
+    status: answerStatusEnum("status").notNull().default("pending"),
+    failureReason: text("failure_reason"),
+    /** content / clarity / relevance / structure, 0-100 each. Null until scored. */
+    scores: jsonb("scores").$type<AnswerScores>(),
+    overallScore: integer("overall_score"),
+    feedback: text("feedback"),
     strengths: jsonb("strengths").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     improvements: jsonb("improvements").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     /** STAR-shaped model answer for behavioural questions. */

@@ -200,6 +200,16 @@ export interface SessionConfig {
   role?: string;
   /** Technologies the candidate asked to be tested on. Empty means "cover my background broadly". */
   focusAreas?: string[];
+  /**
+   * Whether this round draws on the candidate's resume/background at all.
+   *
+   * Off means "textbook questions on the chosen technologies" — no reference
+   * to their projects or employers, for when someone wants to drill a
+   * language or framework generally rather than defend their own resume.
+   * Defaults true so existing sessions (written before this flag existed)
+   * keep their original behaviour.
+   */
+  useBackground?: boolean;
   /** Debate: the side the user argues. The AI automatically takes the other. */
   userStance?: "for" | "against";
   personaIds?: string[];

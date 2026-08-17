@@ -10,6 +10,7 @@ import { strict as assert } from "node:assert";
 
 import {
   aggregateScores,
+  difficultyBreakdown,
   runningAverage,
   scoreDelta,
   weightedAnswerScore,
@@ -99,5 +100,24 @@ assert.deepEqual(
 assert.equal(scoreDelta(40, 90), 50);
 assert.equal(scoreDelta(90, 40), -50);
 assert.equal(scoreDelta(70, 70), 0);
+
+/* ── difficulty breakdown ──────────────────────────────────────────────── */
+function sumsTo(n: number) {
+  const b = difficultyBreakdown(n);
+  assert.equal(b.easy + b.medium + b.hard, n, `breakdown for ${n} must sum to ${n}`);
+  return b;
+}
+
+assert.deepEqual(difficultyBreakdown(0), { easy: 0, medium: 0, hard: 0 });
+assert.deepEqual(sumsTo(1), { easy: 1, medium: 0, hard: 0 }, "one question is easy, not hard");
+assert.deepEqual(sumsTo(3), { easy: 1, medium: 1, hard: 1 });
+assert.deepEqual(sumsTo(5), { easy: 2, medium: 2, hard: 1 });
+assert.deepEqual(sumsTo(8), { easy: 3, medium: 3, hard: 2 });
+assert.deepEqual(sumsTo(10), { easy: 4, medium: 4, hard: 2 });
+assert.deepEqual(sumsTo(15), { easy: 6, medium: 5, hard: 4 });
+
+// Every size from 1 to 20 must sum correctly — the largest-remainder method
+// is the part that can silently drift by one if the tie-break is wrong.
+for (let n = 1; n <= 20; n++) sumsTo(n);
 
 console.log("interview-scoring: all checks passed");
