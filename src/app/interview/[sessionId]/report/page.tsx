@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { EvaluationMetric, ScoreDisplay } from "@/components/ui/score";
 import { Surface } from "@/components/ui/surface";
+import { PresenceSummaryCard } from "@/components/presence-summary-card";
+import { RescoreButton } from "@/components/rescore-button";
 import { aggregateScores, runningAverage } from "@/lib/interview-scoring";
 import { requireUser } from "@/lib/session";
 import {
@@ -17,6 +19,8 @@ import {
 import { getInterview } from "../../actions";
 
 export const metadata: Metadata = { title: "Interview report" };
+
+const DIFFICULTY_LABEL = { easy: "Easy", medium: "Medium", hard: "Hard" } as const;
 
 export default async function InterviewReportPage({
   params,
@@ -62,17 +66,37 @@ export default async function InterviewReportPage({
   const { session, questions, answers } = sessionResult;
   if (answers.length === 0) redirect(`/interview/${sessionId}`);
 
-  const overall = runningAverage(answers) ?? 0;
-  const dimensions = aggregateScores(answers);
+  // Scoring runs once, in a batch, after the interview ends (D79) — which
+  // means an answer can exist here without a score yet, or with one that
+  // failed. Every calculation below that assumes a number narrows to this
+  // subset first, so a still-pending row can never become `NaN` on the page
+  // instead of the honest "not scored yet" state further down.
+  const scored = answers.filter(
+    (a): a is typeof a & { overallScore: number; scores: NonNullable<typeof a.scores>; feedback: string } =>
+      a.overallScore !== null && a.scores !== null,
+  );
+
+  const overall = runningAverage(scored) ?? 0;
+  const dimensions = aggregateScores(scored);
   const persona = (session.config?.persona ?? "professional") as InterviewerPersona;
 
-  // Best attempt per question, plus the first, so we can show a retry delta.
-  const byQuestion = new Map<string, { best: typeof answers[number]; first: typeof answers[number] }>();
-  for (const answer of [...answers].sort((a, b) => a.attempt - b.attempt)) {
+  // Best scored attempt per question, plus the first, so we can show a retry
+  // delta. Only scored attempts compete for "best" — an unscored retry isn't
+  // comparable to one that already has a number.
+  const byQuestion = new Map<string, { best: (typeof scored)[number]; first: (typeof scored)[number] }>();
+  for (const answer of [...scored].sort((a, b) => a.attempt - b.attempt)) {
     const entry = byQuestion.get(answer.questionId);
     if (!entry) byQuestion.set(answer.questionId, { best: answer, first: answer });
     else if (answer.overallScore > entry.best.overallScore) entry.best = answer;
   }
+
+  // Any question with a saved transcript but no entry in byQuestion means
+  // every attempt at it is still pending or failed — the one place on this
+  // page that isn't a number, and the one place with a retry button instead
+  // of a score.
+  const unscoredQuestions = questions.filter(
+    (q) => answers.some((a) => a.questionId === q.id) && !byQuestion.has(q.id),
+  );
 
   const answeredQuestions = questions.filter((q) => byQuestion.has(q.id));
 
@@ -104,7 +128,7 @@ export default async function InterviewReportPage({
         </p>
         <ScoreDisplay value={overall} />
         <p className="t-lead mx-auto mt-8 max-w-lg text-ink">
-          {answeredQuestions.length} of {questions.length} questions answered.{" "}
+          {answeredQuestions.length} of {questions.length} questions scored.{" "}
           {overall >= 75
             ? "That would have been a solid round."
             : overall >= 55
@@ -169,6 +193,35 @@ export default async function InterviewReportPage({
         </section>
       )}
 
+      {session.presenceSummary && (
+        <section className="rise mt-16 [animation-delay:140ms]">
+          <PresenceSummaryCard summary={session.presenceSummary} />
+        </section>
+      )}
+
+      {/* Anything the batch couldn't score */}
+      {unscoredQuestions.length > 0 && (
+        <section className="rise mt-16 [animation-delay:150ms]">
+          <p className="t-micro mb-2">Couldn&apos;t be scored yet</p>
+          <div className="divide-y divide-line/70 border-t border-line">
+            {unscoredQuestions.map((question) => {
+              const latestAttempt = answers
+                .filter((a) => a.questionId === question.id)
+                .sort((a, b) => b.attempt - a.attempt)[0];
+              return (
+                <div key={question.id} className="space-y-4 py-6">
+                  <p className="t-body text-ink-2">{question.question}</p>
+                  {latestAttempt?.failureReason && (
+                    <p className="t-meta text-ink-4">{latestAttempt.failureReason}</p>
+                  )}
+                  <RescoreButton sessionId={sessionId} questionId={question.id} />
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Question by question */}
       <section className="rise mt-16 [animation-delay:160ms]">
         <p className="t-micro mb-2">Question by question</p>
@@ -186,8 +239,11 @@ export default async function InterviewReportPage({
                   </span>
                   <span className="t-body flex-1 text-ink-2 transition-colors group-hover:text-ink">
                     {question.question}
+                    <span className="ml-3 inline-block whitespace-nowrap rounded-full border border-line px-2.5 py-0.5 align-middle text-[12px] text-ink-4">
+                      {DIFFICULTY_LABEL[question.difficulty]}
+                    </span>
                     {question.focusArea && (
-                      <span className="ml-3 inline-block whitespace-nowrap rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 align-middle text-[12px] font-medium text-accent">
+                      <span className="ml-2 inline-block whitespace-nowrap rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 align-middle text-[12px] font-medium text-accent">
                         {question.focusArea}
                       </span>
                     )}
@@ -207,6 +263,17 @@ export default async function InterviewReportPage({
 
                 <div className="mt-5 space-y-5 pl-16">
                   <p className="t-body text-ink-2">{entry.best.feedback}</p>
+
+                  {(entry.best.strengths.length > 0 || entry.best.improvements.length > 0) && (
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      {entry.best.strengths.length > 0 && (
+                        <Notes title="Worked" items={entry.best.strengths} accent="var(--color-positive)" />
+                      )}
+                      {entry.best.improvements.length > 0 && (
+                        <Notes title="Fix" items={entry.best.improvements} accent="var(--color-caution)" />
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <p className="t-micro mb-3">What you said</p>
@@ -262,5 +329,21 @@ function Highlight({
       <p className="t-body mt-4 text-ink">{question}</p>
       <p className="t-meta mt-3">{note}</p>
     </Surface>
+  );
+}
+
+function Notes({ title, items, accent }: { title: string; items: string[]; accent: string }) {
+  return (
+    <div>
+      <p className="t-micro mb-4">{title}</p>
+      <ul className="space-y-3">
+        {items.map((item, i) => (
+          <li key={i} className="flex gap-3">
+            <span className="mt-2.5 h-px w-4 shrink-0" style={{ background: accent }} aria-hidden />
+            <p className="t-body text-ink-2">{item}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

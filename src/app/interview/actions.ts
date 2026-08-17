@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -19,6 +19,7 @@ import { AppError, toAppError, type AppErrorCode } from "@/lib/errors";
 import { gateOrRedirect } from "@/lib/gate";
 import { runningAverage } from "@/lib/interview-scoring";
 import { getProfile, recordPractice } from "@/lib/practice";
+import type { PresenceSummary } from "@/lib/presence-scoring";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { tokensForScore } from "@/lib/scoring";
 import { requireUserApi } from "@/lib/session";
@@ -98,6 +99,12 @@ const StartInput = z.object({
     .array(z.string().trim().min(1).max(48))
     .max(6)
     .default([]),
+  // Radio on the setup screen: "my background" vs "just these topics".
+  // Coerced from the string a native <input type="radio"> sends.
+  useBackground: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
 });
 
 /**
@@ -122,6 +129,7 @@ export async function startInterview(formData: FormData) {
     questionCount: formData.get("questionCount"),
     role: formData.get("role") || undefined,
     focusAreas: formData.getAll("focus").filter((v): v is string => typeof v === "string"),
+    useBackground: formData.get("useBackground") || undefined,
   });
 
   // No rate limit here any more: this function makes no model call. The limit
@@ -131,14 +139,26 @@ export async function startInterview(formData: FormData) {
   const resume = profile?.resumeExtractedData;
   const written = profile?.skillsDescription;
 
-  if (!resume && !written) {
+  if (input.useBackground) {
+    if (!resume && !written) {
+      throw new AppError(
+        "invalid_input",
+        "Add a skills description or upload a resume first, so the questions are about you — or switch to general practice below.",
+      );
+    }
+  } else if (input.focusAreas.length === 0 && !input.role) {
+    // General mode has nothing else to draw questions from — the role and the
+    // focus chips are the entire content source once the resume is off.
     throw new AppError(
       "invalid_input",
-      "Add a skills description or upload a resume first, so the questions are about you.",
+      "Pick at least one technology, or name a role, for general practice.",
     );
   }
 
-  const role = input.role || resume?.recommendedRole || "a role in your field";
+  const role = input.useBackground
+    ? input.role || resume?.recommendedRole || "a role in your field"
+    : input.role ||
+      (input.focusAreas.length > 0 ? `${input.focusAreas.join(", ")} practice` : "a role in your field");
   const preferredLanguage = profile?.preferredLanguage ?? "en";
 
   const [session] = await db
@@ -154,6 +174,7 @@ export async function startInterview(formData: FormData) {
         questionCount: input.questionCount,
         role,
         focusAreas: input.focusAreas,
+        useBackground: input.useBackground,
       },
     })
     .returning();
@@ -190,11 +211,16 @@ export async function prepareQuestions(sessionId: string): Promise<Result<{ coun
 
     if (existing.length > 0) return { ok: true, data: { count: existing.length } };
 
+    const config = session.config ?? {};
+    // Older sessions were written before this flag existed and always used
+    // the background, so an absent value means true, not false.
+    const useBackground = config.useBackground ?? true;
+
     const profile = await getProfile(user.id);
     const resume = profile?.resumeExtractedData;
     const written = profile?.skillsDescription;
 
-    if (!resume && !written) {
+    if (useBackground && !resume && !written) {
       throw new AppError(
         "invalid_input",
         "Add a skills description or upload a resume first, so the questions are about you.",
@@ -203,25 +229,27 @@ export async function prepareQuestions(sessionId: string): Promise<Result<{ coun
 
     // Rebuilt here rather than carried through the session row: it is derived
     // from the profile, and a copy in the database would be a second source of
-    // truth that goes stale the moment a resume is re-uploaded.
-    const background = resume
-      ? [
-          resume.summary,
-          `Skills: ${resume.skills.join(", ")}`,
-          ...resume.experience.map(
-            (e) =>
-              `${e.role} at ${e.company}${e.period ? ` (${e.period})` : ""}. ${(e.highlights ?? []).join(" ")}`,
-          ),
-          ...resume.projects.map(
-            (p) => `Project ${p.name}: ${p.description ?? ""} ${(p.tech ?? []).join(", ")}`,
-          ),
-          written,
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : (written ?? "");
+    // truth that goes stale the moment a resume is re-uploaded. Skipped
+    // entirely in general mode — see `useBackground` on `generateQuestions`.
+    const background = !useBackground
+      ? ""
+      : resume
+        ? [
+            resume.summary,
+            `Skills: ${resume.skills.join(", ")}`,
+            ...resume.experience.map(
+              (e) =>
+                `${e.role} at ${e.company}${e.period ? ` (${e.period})` : ""}. ${(e.highlights ?? []).join(" ")}`,
+            ),
+            ...resume.projects.map(
+              (p) => `Project ${p.name}: ${p.description ?? ""} ${(p.tech ?? []).join(", ")}`,
+            ),
+            written,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : (written ?? "");
 
-    const config = session.config ?? {};
     await enforceRateLimit(user.id);
 
     const questions = await generateQuestions({
@@ -231,6 +259,7 @@ export async function prepareQuestions(sessionId: string): Promise<Result<{ coun
       count: config.questionCount ?? 10,
       role: config.role ?? session.promptSnapshot ?? "a role in your field",
       background,
+      useBackground,
       focusAreas: config.focusAreas ?? [],
       language: session.language,
     });
@@ -248,7 +277,7 @@ export async function prepareQuestions(sessionId: string): Promise<Result<{ coun
 
 /* ── Answering ──────────────────────────────────────────────────────────── */
 
-const AnswerInput = z.object({
+const TranscriptInput = z.object({
   sessionId: z.string().uuid(),
   questionId: z.string().uuid(),
   // Clamped rather than rejected: a transcript over the cap still contains a
@@ -267,31 +296,24 @@ const AnswerInput = z.object({
 });
 
 /**
- * Analyses a single answer immediately and returns the verdict plus the
- * running average, so the UI can show progress mid-interview rather than
- * banking everything until the end.
+ * Saves what the candidate said. No model call — this is the whole point.
+ *
+ * Scoring moved to `analyseSession`, run once after the interview ends (see
+ * the note on `analyseAnswer`). This function's only job is to get the
+ * transcript into durable storage fast enough that the room can move to the
+ * next question without the candidate waiting on a network round trip, and
+ * without a browser crash between questions losing an answer that was never
+ * written down.
  */
-export async function submitAnswer(
-  raw: z.input<typeof AnswerInput>,
-): Promise<
-  Result<{
-    overallScore: number;
-    feedback: string;
-    strengths: string[];
-    improvements: string[];
-    idealAnswer: string;
-    runningAverage: number | null;
-    attempt: number;
-    delta: number | null;
-  }>
-> {
+export async function submitTranscript(
+  raw: z.input<typeof TranscriptInput>,
+): Promise<Result<{ answeredCount: number }>> {
   try {
     const user = await requireUserApi();
-    const input = AnswerInput.parse(raw);
-    await enforceRateLimit(user.id);
+    const input = TranscriptInput.parse(raw);
 
     const [session] = await db
-      .select()
+      .select({ id: practiceSessions.id })
       .from(practiceSessions)
       .where(
         and(eq(practiceSessions.id, input.sessionId), eq(practiceSessions.userId, user.id)),
@@ -301,7 +323,7 @@ export async function submitAnswer(
     if (!session) throw new AppError("not_found", "That interview doesn't exist.");
 
     const [question] = await db
-      .select()
+      .select({ id: interviewQuestions.id })
       .from(interviewQuestions)
       .where(
         and(
@@ -313,79 +335,255 @@ export async function submitAnswer(
 
     if (!question) throw new AppError("not_found", "That question isn't part of this interview.");
 
-    const config = session.config ?? {};
-
-    const verdict = await analyseAnswer({
-      userId: user.id,
-      sessionId: session.id,
-      question: question.question,
-      kind: question.kind,
-      transcript: input.transcript,
-      persona: (config.persona ?? "professional") as InterviewerPersona,
-      role: config.role ?? session.promptSnapshot ?? "the role",
-      language: session.language,
-    });
-
-    // Attempts are append-only so the report can show a retry delta.
-    const previous = await db
-      .select({ attempt: interviewAnswers.attempt, overallScore: interviewAnswers.overallScore })
+    // Append-only, same as before: a duplicate submit (a double-click, a retry
+    // after a dropped request) adds an attempt rather than corrupting one.
+    // `analyseSession` only ever scores the latest attempt per question, so a
+    // stray extra row costs nothing beyond a little storage.
+    const [{ count: previousCount }] = await db
+      .select({ count: sql<number>`count(*)::int` })
       .from(interviewAnswers)
-      .where(eq(interviewAnswers.questionId, question.id))
-      .orderBy(asc(interviewAnswers.attempt));
-
-    const attempt = previous.length + 1;
-    const firstScore = previous[0]?.overallScore ?? null;
+      .where(eq(interviewAnswers.questionId, question.id));
 
     await db.insert(interviewAnswers).values({
       questionId: question.id,
       sessionId: session.id,
-      attempt,
+      attempt: previousCount + 1,
       transcript: input.transcript,
       inputMode: input.inputMode,
-      scores: verdict.scores,
-      overallScore: verdict.overallScore,
-      feedback: verdict.feedback,
-      strengths: verdict.strengths,
-      improvements: verdict.improvements,
-      idealAnswer: verdict.idealAnswer,
+      status: "pending",
       durationSeconds: input.durationSeconds,
     });
 
-    const all = await db
-      .select({
-        questionId: interviewAnswers.questionId,
-        overallScore: interviewAnswers.overallScore,
-      })
+    const [{ count: answeredCount }] = await db
+      .select({ count: sql<number>`count(distinct ${interviewAnswers.questionId})::int` })
       .from(interviewAnswers)
       .where(eq(interviewAnswers.sessionId, session.id));
 
     revalidatePath(`/interview/${session.id}`);
+    return { ok: true, data: { answeredCount } };
+  } catch (error) {
+    return fail(error, "submitTranscript");
+  }
+}
 
-    return {
-      ok: true,
-      data: {
+/**
+ * Scores one saved-but-unscored answer and writes the result in place.
+ *
+ * The one function both `analyseSession` (the normal batch-at-the-end path)
+ * and `rescoreAnswer` (the report page's per-question retry) call, so the two
+ * paths can't drift into scoring an answer two different ways.
+ */
+async function scoreOneAnswer(
+  userId: string,
+  answer: { id: string; sessionId: string; questionId: string; transcript: string },
+  question: { question: string; kind: (typeof interviewQuestions.$inferSelect)["kind"] },
+  session: { config: unknown; promptSnapshot: string | null; language: (typeof practiceSessions.$inferSelect)["language"] },
+): Promise<void> {
+  const config = (session.config ?? {}) as { persona?: InterviewerPersona; role?: string };
+
+  try {
+    await enforceRateLimit(userId);
+    const verdict = await analyseAnswer({
+      userId,
+      sessionId: answer.sessionId,
+      question: question.question,
+      kind: question.kind,
+      transcript: answer.transcript,
+      persona: config.persona ?? "professional",
+      role: config.role ?? session.promptSnapshot ?? "the role",
+      language: session.language,
+    });
+
+    await db
+      .update(interviewAnswers)
+      .set({
+        status: "scored",
+        failureReason: null,
+        scores: verdict.scores,
         overallScore: verdict.overallScore,
         feedback: verdict.feedback,
         strengths: verdict.strengths,
         improvements: verdict.improvements,
         idealAnswer: verdict.idealAnswer,
-        runningAverage: runningAverage(all),
-        attempt,
-        delta: firstScore === null ? null : verdict.overallScore - firstScore,
-      },
-    };
+      })
+      .where(eq(interviewAnswers.id, answer.id));
   } catch (error) {
-    return fail(error, "submitAnswer");
+    // One bad answer must not sink the other nine. Mark it and move on — the
+    // report offers a retry, so nothing the candidate said is lost, only
+    // delayed.
+    const message = error instanceof AppError ? error.message : "Couldn't be scored.";
+    await db
+      .update(interviewAnswers)
+      .set({ status: "failed", failureReason: message.slice(0, 300) })
+      .where(eq(interviewAnswers.id, answer.id));
   }
 }
 
-/** Closes the interview and writes the aggregate. */
-export async function finishInterview(sessionId: string): Promise<Result<{ overall: number }>> {
+/** Runs `fn` over `items` with at most `limit` in flight at once. */
+async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const item = items[next++];
+      await fn(item);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+/**
+ * Scores every answer in the session that doesn't have a score yet.
+ *
+ * Called once, when the candidate reaches the end — not per question. Answers
+ * are read by `overallScore IS NULL` rather than `status = 'pending'`: the two
+ * should always agree, but a row a previous partial run marked `failed` still
+ * has a null score and still deserves another attempt, and using the score as
+ * the source of truth means a bug in status bookkeeping can never make the
+ * report silently drop a real answer.
+ *
+ * Runs up to three calls concurrently. Sequential would mean a ten-question
+ * interview waiting on ten calls back to back; unbounded parallelism would
+ * throw ten requests at the rate limiter and the providers at once. Three is
+ * comfortably inside both.
+ */
+export async function analyseSession(
+  sessionId: string,
+): Promise<Result<{ scored: number; failed: number }>> {
   try {
     const user = await requireUserApi();
 
     const [session] = await db
       .select()
+      .from(practiceSessions)
+      .where(and(eq(practiceSessions.id, sessionId), eq(practiceSessions.userId, user.id)))
+      .limit(1);
+
+    if (!session) throw new AppError("not_found", "That interview doesn't exist.");
+
+    const rows = await db
+      .select({
+        id: interviewAnswers.id,
+        questionId: interviewAnswers.questionId,
+        transcript: interviewAnswers.transcript,
+        overallScore: interviewAnswers.overallScore,
+        attempt: interviewAnswers.attempt,
+        question: interviewQuestions.question,
+        kind: interviewQuestions.kind,
+      })
+      .from(interviewAnswers)
+      .innerJoin(interviewQuestions, eq(interviewQuestions.id, interviewAnswers.questionId))
+      .where(eq(interviewAnswers.sessionId, sessionId));
+
+    // Latest attempt per question only. If the room ever produced more than
+    // one saved attempt for the same question (a duplicate submit), the
+    // earlier ones are superseded rather than double-billed for a model call.
+    const latestPerQuestion = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      const current = latestPerQuestion.get(row.questionId);
+      if (!current || row.attempt > current.attempt) latestPerQuestion.set(row.questionId, row);
+    }
+
+    const pending = [...latestPerQuestion.values()].filter((row) => row.overallScore === null);
+
+    await mapWithConcurrency(pending, 3, (row) =>
+      scoreOneAnswer(
+        user.id,
+        { id: row.id, sessionId, questionId: row.questionId, transcript: row.transcript },
+        { question: row.question, kind: row.kind },
+        session,
+      ),
+    );
+
+    const after = await db
+      .select({ overallScore: interviewAnswers.overallScore, id: interviewAnswers.id })
+      .from(interviewAnswers)
+      .where(and(eq(interviewAnswers.sessionId, sessionId), inArray(interviewAnswers.id, pending.map((p) => p.id))));
+
+    const scored = after.filter((row) => row.overallScore !== null).length;
+
+    revalidatePath(`/interview/${sessionId}`);
+    revalidatePath(`/interview/${sessionId}/report`);
+    return { ok: true, data: { scored, failed: pending.length - scored } };
+  } catch (error) {
+    return fail(error, "analyseSession");
+  }
+}
+
+/** Re-scores one answer that failed during the batch. The report's retry button. */
+export async function rescoreAnswer(
+  sessionId: string,
+  questionId: string,
+): Promise<Result<{ overallScore: number }>> {
+  try {
+    const user = await requireUserApi();
+
+    const [session] = await db
+      .select()
+      .from(practiceSessions)
+      .where(and(eq(practiceSessions.id, sessionId), eq(practiceSessions.userId, user.id)))
+      .limit(1);
+
+    if (!session) throw new AppError("not_found", "That interview doesn't exist.");
+
+    const [row] = await db
+      .select({
+        id: interviewAnswers.id,
+        transcript: interviewAnswers.transcript,
+        attempt: interviewAnswers.attempt,
+        question: interviewQuestions.question,
+        kind: interviewQuestions.kind,
+      })
+      .from(interviewAnswers)
+      .innerJoin(interviewQuestions, eq(interviewQuestions.id, interviewAnswers.questionId))
+      .where(and(eq(interviewAnswers.sessionId, sessionId), eq(interviewAnswers.questionId, questionId)))
+      .orderBy(desc(interviewAnswers.attempt))
+      .limit(1);
+
+    if (!row) throw new AppError("not_found", "No answer to rescore for that question.");
+
+    await scoreOneAnswer(
+      user.id,
+      { id: row.id, sessionId, questionId, transcript: row.transcript },
+      { question: row.question, kind: row.kind },
+      session,
+    );
+
+    const [updated] = await db
+      .select({ overallScore: interviewAnswers.overallScore })
+      .from(interviewAnswers)
+      .where(eq(interviewAnswers.id, row.id))
+      .limit(1);
+
+    if (!updated || updated.overallScore === null) {
+      throw new AppError("provider_unavailable", "Still couldn't score that one. Try again shortly.");
+    }
+
+    revalidatePath(`/interview/${sessionId}/report`);
+    return { ok: true, data: { overallScore: updated.overallScore } };
+  } catch (error) {
+    return fail(error, "rescoreAnswer");
+  }
+}
+
+/**
+ * Closes the interview: writes the aggregate, saves the session's camera
+ * presence summary if tracking was on, records the day's practice.
+ *
+ * Requires `analyseSession` to have already run — this only reads scores, it
+ * never generates them. Requires at least one *scored* answer, not merely one
+ * saved answer: a session where every question failed to score has nothing
+ * to show a report about, and completing it anyway would bury that failure
+ * behind a report page with no numbers on it.
+ */
+export async function finishInterview(
+  sessionId: string,
+  presenceSummary?: PresenceSummary,
+): Promise<Result<{ overall: number }>> {
+  try {
+    const user = await requireUserApi();
+
+    const [session] = await db
+      .select({ id: practiceSessions.id })
       .from(practiceSessions)
       .where(and(eq(practiceSessions.id, sessionId), eq(practiceSessions.userId, user.id)))
       .limit(1);
@@ -400,15 +598,28 @@ export async function finishInterview(sessionId: string): Promise<Result<{ overa
       .from(interviewAnswers)
       .where(eq(interviewAnswers.sessionId, session.id));
 
-    if (answers.length === 0) {
-      throw new AppError("invalid_input", "Answer at least one question before finishing.");
+    // `overallScore` is `number | null` here — narrow before handing rows to
+    // interview-scoring.ts, whose maths assumes every row it sees has a score.
+    const scored = answers.filter(
+      (row): row is { questionId: string; overallScore: number } => row.overallScore !== null,
+    );
+
+    if (scored.length === 0) {
+      throw new AppError(
+        "invalid_input",
+        "None of your answers could be scored yet. Try again in a moment.",
+      );
     }
 
-    const overall = runningAverage(answers) ?? 0;
+    const overall = runningAverage(scored) ?? 0;
 
     await db
       .update(practiceSessions)
-      .set({ status: "completed", completedAt: new Date() })
+      .set({
+        status: "completed",
+        completedAt: new Date(),
+        ...(presenceSummary ? { presenceSummary } : {}),
+      })
       .where(eq(practiceSessions.id, session.id));
 
     await recordPractice(
@@ -418,6 +629,7 @@ export async function finishInterview(sessionId: string): Promise<Result<{ overa
     );
 
     revalidatePath("/dashboard");
+    revalidatePath(`/interview/${sessionId}/report`);
     return { ok: true, data: { overall } };
   } catch (error) {
     return fail(error, "finishInterview");

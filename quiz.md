@@ -25,21 +25,21 @@ means you have to stop yourself scrolling. Answer first.
 
 ## Sections
 
-88 questions in all.
+92 questions in all.
 
 | | Area | Questions |
 | --- | --- | --- |
 | A | Architecture | A1–A4 |
 | B | The scoring philosophy | B1–B6 |
 | C | Practice loop | C1–C5 |
-| D | Interview engine | D1–D14 |
+| D | Interview engine | D1–D17 |
 | E | Group discussion & debate | E1–E4 |
 | Ea | Conversation & scenarios | Ea1–Ea5 |
 | Eb | Admin & cost | Eb1–Eb6 |
 | Fa | Progress & gamification | Fa1–Fa8 |
 | Fb | Monetization | Fb1–Fb6 |
 | Fc | Voice & turn-taking | Fc1–Fc5 |
-| Fd | Reading & presence | Fd1–Fd6 |
+| Fd | Reading & presence | Fd1–Fd7 |
 | F | Design system | F1–F5 |
 | G | Reliability & security | G1–G6 |
 | H | Traps | H1–H8 |
@@ -229,17 +229,23 @@ Two reasons:
 The cost is that the round cannot adapt mid-flight — which is also true of a
 real first-round interviewer working from a prepared list.
 
-### D2. ⭐ Why analyse each answer immediately rather than scoring the whole transcript at the end?
+### D2. ⭐ Why does the interview score every answer at the end now, rather than immediately after each one?
 
-Because a candidate who rambled on question 3 should find out before they
-answer question 4. Feedback banked until the end cannot change behaviour during
-the only window where behaviour is being practised.
+It didn't always. This reverses an earlier decision (`decisions.md` D28), on
+direct instruction, once the cost of the original design showed up in practice.
 
-It also gives a running average, so the session has a live sense of how it is
-going.
+The original reasoning was real: a candidate who rambled on question 3 should
+find out before they answer question 4. But it meant every question after the
+first paid a two-to-six second model round trip *inside* the flow of
+answering — the interview stopping to be graded, repeatedly, which is not how
+an uninterrupted mock interview should feel.
 
-This was flagged in the original plan as the trickiest piece of logic in the
-app, and it is: see the sequence diagram in `flow.md` §5.
+Now `submitTranscript` is a plain insert with no model call — answering never
+waits on anything — and `analyseSession` scores every question in one batch
+after the last one is saved, with bounded concurrency so one slow or failed
+call doesn't hold up the other nine. `finishInterview` then averages whatever
+scored. The report is where the judgement shows up, question by question, all
+at once — see the sequence diagram in `flow.md` §5 and `decisions.md` D79.
 
 ### D3. ⭐ A user scores 40, retries, scores 90. What is their average, and why?
 
@@ -297,15 +303,16 @@ stale within a year. The only technologies worth being interviewed on are the
 ones you claimed; the free entry exists because the thing you most need to
 practise is often on the job description rather than on your CV.
 
-### D8. ⭐ Why is the ideal answer generated on every answer but not shown until the end?
+### D8. ⭐ Why is the ideal answer generated for every question but not shown until the end?
 
 Reading a perfect answer to question 3 and then answering question 4 trains
 recall rather than thinking — the phrasing you just read comes back out of your
 mouth, and the score measures your short-term memory instead of your ability.
 
-It is still generated immediately because it costs one call either way and the
-report needs it. The report is where it belongs: next to what you actually
-said, question by question, where the comparison is the point.
+It costs one call either way, so it is generated as part of the same
+end-of-session scoring batch that produces everything else (D2), and shown
+only on the report: next to what you actually said, question by question,
+where the comparison is the point.
 
 ### D9. A single answer is capped at ten minutes. Why enforce it in two places?
 
@@ -401,6 +408,53 @@ and we didn't like it".
 
 The general principle: a fallback is for when you can't reach someone, not for
 when you don't like their answer.
+
+### D15. ⭐ The setup page used to require a resume. What was wrong with that, and what replaced it?
+
+It meant no resume, no interview — and even with one on file, every question
+pulled from it whether the candidate wanted that or not. Someone who just
+wanted plain C# and JavaScript practice was forced through a resume upload and
+then examined on their own projects anyway.
+
+`useBackground` is now an explicit choice at setup, not something inferred
+from whether a resume exists. Off, the generator is told nothing about the
+candidate — no resume text, no skills description, and an explicit instruction
+not to reference any project or employer even if one leaked in through
+context — and every question comes from the chosen technologies instead of the
+usual majority share. The setup page shows what's actually on file (role,
+skills, or raw text) right above the choice, so picking "based on my
+background" means something inspectable rather than a leap of faith. See
+`decisions.md` D81.
+
+### D16. ⭐ How does the app guarantee an exact easy/medium/hard split for any question count, rather than an approximate one?
+
+By computing it in code and assigning it positionally, the same move as the
+focus-area tag in D6/D69.
+
+`difficultyBreakdown(count)` applies fixed shares (40/35/25) and the
+largest-remainder method, so the three counts always sum to exactly `count` —
+no rounding leftover, no "close to it." `difficultySlots()` expands that into
+an ordered array, and each generated question is stamped with
+`slots[index]` — its position in the array the model returned — never the
+difficulty label the model put in its own JSON. Asking the model to hit a
+ratio is a nudge; assigning by position is a guarantee. Verified for every
+count 1 through 20 in `interview-scoring.test.ts`. See `decisions.md` D80.
+
+### D17. A candidate's answer gets marked "vague" with no explanation of what a better answer needed. What's wrong with that feedback, and what replaced it?
+
+"Be more specific" tells the candidate something is missing without saying
+what — which isn't actionable if they didn't already know the answer, and if
+they did, they wouldn't have given a vague one.
+
+The `improvements` prompt now requires each bullet to name the actual missing
+content: the specific technique, term, or fact a strong answer would have
+included. "I optimized the query" with no how gets back "name the actual fix:
+an index on the join column, or replacing repeated lookups with a single JOIN
+instead of N+1 queries." A mention of joins with no kind specified gets "state
+which join you used and why — an INNER JOIN if unmatched rows should be
+dropped, a LEFT JOIN if the left side must be preserved." The bar: the
+candidate should be able to paste the bullet into their next attempt almost
+verbatim. See `decisions.md` D82.
 
 ## E. Group discussion & debate
 
@@ -855,6 +909,36 @@ Measured: shared JS unchanged at 102 kB, interview room +3.4 kB — the monitor
 component and the hook, none of it TensorFlow. Weights are self-hosted from
 `public/models` rather than a CDN, so there's no external runtime dependency and
 nothing to break under a content security policy.
+
+### Fd7. ⭐⭐ "The camera stops working after question one." One bug report — how many actual bugs was it?
+
+Three, wearing one symptom.
+
+1. **The remount.** `<PresenceMonitor>` was nested inside per-phase JSX, so
+   React tore down and recreated the `<video>` element on every phase change.
+   `usePresence` only assigns `video.srcObject = stream` once, inside
+   `start()` — a remounted `<video>` never got the stream reattached, so
+   tracking silently stopped doing anything useful while the UI still claimed
+   `"tracking"`. Fixed by mounting the monitor once for the room's whole
+   lifetime and toggling visibility with a CSS class instead.
+2. **A re-entry race.** A slow face-model load plus an impatient second click
+   on "Turn on" could fire two concurrent `getUserMedia` calls, leaking a
+   stream nothing ever stopped. Fixed with a guard at the top of `start()`
+   that returns immediately if a start is already `loading`, `requesting`, or
+   `tracking`.
+3. **A dead-end error status.** Every non-permission failure — no camera
+   present, the camera held by another app, the model fetch failing, or
+   simply running over http — collapsed into one bare `"error"` status with no
+   text anywhere in the UI. Fixed by distinguishing `NotFoundError` and
+   `NotReadableError`, adding an explicit `window.isSecureContext` check
+   *before* anything else runs (browsers refuse `getUserMedia` outright on
+   non-https origins, with an error that reads exactly like a permission
+   denial), and surfacing everything else as a real `errorDetail` message on
+   the panel.
+
+The lesson: fixing only the first, most visible cause would have left the
+diagnostic dead end in place for the next person whose camera failed for a
+completely different reason. See `decisions.md` D83.
 
 ---
 

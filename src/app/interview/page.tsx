@@ -46,7 +46,13 @@ export default async function InterviewSetupPage() {
   ]);
 
   const resume = profile?.resumeExtractedData;
-  const ready = Boolean(resume || profile?.skillsDescription);
+  const skillsDescription = profile?.skillsDescription;
+  // "ready" used to gate the whole page — no resume meant no interview at
+  // all, full stop. That was the actual complaint: someone who just wants
+  // general C# and JavaScript practice was being forced through a resume
+  // upload to get there. It now only decides whether "based on my
+  // background" is offered as a choice; general practice needs no profile.
+  const hasBackground = Boolean(resume || skillsDescription);
   const technologies = technologiesFrom(resume);
 
   if (locked) {
@@ -66,26 +72,6 @@ export default async function InterviewSetupPage() {
     );
   }
 
-  if (!ready) {
-    return (
-      <div className="mx-auto max-w-2xl px-5 pt-32 pb-24 sm:px-6">
-        <p className="t-micro mb-6">Mock interview</p>
-        <h1 className="t-display max-w-[14ch]">
-          First, tell us <span className="text-ink-3">what you do.</span>
-        </h1>
-        <p className="t-lead mt-8 max-w-md">
-          The questions are built from your actual background. Without it we&apos;d just be handing
-          you a generic question bank, which you can find anywhere.
-        </p>
-        <Link href="/interview-prep" className="mt-10 inline-block">
-          <Button variant="primary" size="lg">
-            Set up your profile
-          </Button>
-        </Link>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-3xl px-5 pt-28 pb-24 sm:px-6">
       <header className="rise">
@@ -99,6 +85,102 @@ export default async function InterviewSetupPage() {
       </header>
 
       <form action={startInterview} className="rise mt-14 space-y-12 [animation-delay:80ms]">
+        {/* Background source. This used to be a hard gate on the whole page —
+            no resume meant no interview. That was the actual friction: someone
+            who wants plain C# and JavaScript practice was being forced through
+            a resume upload to get anywhere. The choice is explicit instead. */}
+        <fieldset>
+          <legend className="t-micro mb-2">What should this round draw on?</legend>
+          <p className="t-meta mb-5 max-w-md text-ink-4">
+            Based on your background lets questions reference your real projects and claims.
+            General keeps things textbook — no resume, no personal history, just the technologies
+            you pick below.
+          </p>
+
+          {(resume || skillsDescription) && (
+            <Surface material="frost" radius="md" className="mb-4 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="t-micro mb-2">On file</p>
+                  {resume ? (
+                    <p className="t-body text-ink-2">
+                      {resume.recommendedRole && <>Suggested role: {resume.recommendedRole}. </>}
+                      {resume.skills.length > 0 && (
+                        <>
+                          Skills: {resume.skills.slice(0, 10).join(", ")}
+                          {resume.skills.length > 10 ? "…" : ""}.
+                        </>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="t-body line-clamp-2 text-ink-2">{skillsDescription}</p>
+                  )}
+                </div>
+                <Link
+                  href="/interview-prep"
+                  className="t-meta shrink-0 whitespace-nowrap text-accent hover:underline"
+                >
+                  Change it
+                </Link>
+              </div>
+            </Surface>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={hasBackground ? "cursor-pointer" : "cursor-not-allowed"}>
+              <input
+                type="radio"
+                name="useBackground"
+                value="true"
+                defaultChecked={hasBackground}
+                disabled={!hasBackground}
+                className="peer sr-only"
+              />
+              <Surface
+                material="liquid"
+                radius="md"
+                className="h-full p-5 transition-all peer-checked:ring-2 peer-checked:ring-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent [label:has(input:disabled)_&]:opacity-40"
+              >
+                <p className="t-heading">Based on my background</p>
+                <p className="t-meta mt-1.5">
+                  {hasBackground ? (
+                    "Draws on the resume or skills above."
+                  ) : (
+                    <>
+                      Nothing on file yet —{" "}
+                      <Link href="/interview-prep" className="text-accent hover:underline">
+                        add one
+                      </Link>{" "}
+                      to unlock this.
+                    </>
+                  )}
+                </p>
+              </Surface>
+            </label>
+
+            <label className="cursor-pointer">
+              <input
+                type="radio"
+                name="useBackground"
+                value="false"
+                defaultChecked={!hasBackground}
+                className="peer sr-only"
+              />
+              <Surface
+                material="liquid"
+                radius="md"
+                className="h-full p-5 transition-all peer-checked:ring-2 peer-checked:ring-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
+              >
+                <p className="t-heading">General practice</p>
+                <p className="t-meta mt-1.5">
+                  Textbook questions on the technologies you pick below, independent of anything
+                  on file.
+                </p>
+              </Surface>
+            </label>
+          </div>
+        </fieldset>
+
         {/* Persona */}
         <fieldset>
           <legend className="t-micro mb-5">Interviewer</legend>

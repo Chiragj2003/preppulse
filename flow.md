@@ -139,7 +139,8 @@ Audio never leaves the browser. Only the transcript text is sent.
 
 ## 5. Flow: mock interview (Phase 3)
 
-The per-answer-then-aggregate loop — the most involved logic in the app.
+Question generation is still fixed upfront; scoring moved to the end, reversing
+the earlier per-answer design (`decisions.md` D79).
 
 ```mermaid
 sequenceDiagram
@@ -151,47 +152,53 @@ sequenceDiagram
 
     rect rgb(30,30,38)
     Note over U,D: Once, before question one
-    U->>S: persona, role, question count, focus technologies
-    Note over S: chips come from the candidate's own<br/>resume skills + project tech, plus free entry
+    U->>S: useBackground, persona, role, question count, focus technologies
+    Note over S: "on file" summary shown when a resume/skills<br/>exist; general practice needs neither
     S->>A: startInterview (focus[] as repeated form fields)
-    A->>D: read profile (resume JSON and/or written skills)
-    A->>D: INSERT practice_sessions (config: persona, count, role, focusAreas)
+    A->>D: read profile (resume JSON and/or written skills), when useBackground
+    A->>D: INSERT practice_sessions (config: useBackground, persona, count, role, focusAreas)
     A-->>U: redirect /interview/:id — does NOT wait for questions
     Note over U: PreparingRound renders; the wait is<br/>watched, not hidden behind a hung button
     U->>A: prepareQuestions(sessionId)
     A->>A: return early if questions already exist
-    A->>A: focusedCount = max(len(focus), ceil(N * 0.6)) — computed here
-    A->>GM: generate ALL N questions, >= focusedCount on the chosen topics<br/>each tagged with which topic it tests
+    A->>A: focusedCount — all N if !useBackground, else max(len(focus), ceil(N * 0.6))
+    A->>A: difficultyBreakdown(N) -> difficultySlots() — exact easy/medium/hard counts
+    A->>GM: generate ALL N questions, one per difficulty slot,<br/>each tagged with which topic it tests<br/>(background text omitted entirely when !useBackground)
     Note over GM: 503 "high demand" is retried 3x with backoff,<br/>then the next model id
     GM-->>A: questions + rationale + focusArea each
     A->>A: validate focusArea against the chosen list (invented tags dropped)
-    A->>D: INSERT interview_questions (position 0..N-1, focus_area)
+    A->>A: difficulty assigned by POSITION in difficultySlots(), not the model's own label
+    A->>D: INSERT interview_questions (position 0..N-1, focus_area, difficulty)
     A-->>U: router.refresh() — the room renders
     end
 
     loop for each question
         U->>U: answer aloud — pausing ends the turn, no button
-        Note over U: 10-minute cap; warning from 9:00
-        U->>A: submitAnswer(questionId, transcript)
-        A->>A: enforceRateLimit; clamp duration + transcript to the cap
-        A->>GM: score content/clarity/relevance/structure<br/>+ feedback + STAR ideal answer
-        GM-->>A: verdict
-        A->>A: weightedAnswerScore — computed here
-        A->>D: INSERT interview_answers (attempt = n+1)
-        A->>D: SELECT all answers for session
-        A->>A: runningAverage — best attempt per question
-        A-->>U: score + feedback + strengths/fixes<br/>(ideal answer withheld until the report)
-        alt Retry
-            U->>A: submitAnswer again (attempt + 1)
-            Note over A: the better attempt wins;<br/>the first is kept for the delta
+        Note over U: 10-minute cap; warning from 9:00.<br/>Camera panel (if on) stays mounted the whole room, CSS-hidden between questions
+        U->>A: submitTranscript(questionId, transcript)
+        Note over A: fast — no model call. Row inserted status: "pending"
+        A->>D: INSERT interview_answers (attempt = n+1, status: pending)
+        A-->>U: "Saved." — auto-advance to the next question
+        alt Retry before moving on
+            U->>A: submitTranscript again (attempt + 1)
         end
     end
 
-    U->>A: finishInterview
-    A->>A: aggregateScores — best attempt per question
-    A->>D: UPDATE session completed, recordPractice
+    U->>A: finishAndAnalyze (after the last question saves)
+    A->>A: endPresenceRecording() -> PresenceSummary, if the camera was on
+    U->>A: analyseSession(sessionId)
+    A->>D: SELECT all answers, keep latest attempt per question, filter overallScore IS NULL
+    par bounded concurrency, 3 at a time
+        A->>GM: scoreOneAnswer — content/clarity/relevance/structure<br/>+ feedback + STAR ideal answer
+        GM-->>A: verdict
+        A->>D: UPDATE interview_answers SET status='scored', scores, overall_score
+        Note over A: a single failure sets status='failed',<br/>failure_reason — never throws, never sinks the batch
+    end
+    U->>A: finishInterview(sessionId, presenceSummary)
+    A->>A: runningAverage over rows where overallScore IS NOT NULL — the source of truth,<br/>not the status column (see D79)
+    A->>D: UPDATE session completed, presence_summary, recordPractice
     A-->>U: redirect /interview/:id/report
-    Note over U: report shows every ideal answer,<br/>plus "Tested on: Postgres x2, Kubernetes x2"
+    Note over U: report shows every ideal answer, difficulty per question,<br/>a presence summary, a retry button for anything still status='failed',<br/>plus "Tested on: Postgres x2, Kubernetes x2"
 ```
 
 **Why the question set is fixed upfront:** the session stays resumable, and the
@@ -203,6 +210,16 @@ renders as a bare 500 page, discarding the setup the user had just filled in.
 The session row is the cheap reliable part, so it lands first. Close the tab
 mid-generation and the session is waiting on the dashboard.
 
+**Why scoring moved to the end (D79):** live per-answer scoring meant the
+interview stopped for two to six seconds after every question while the model
+graded it — the opposite of an uninterrupted mock interview. `submitTranscript`
+is a plain insert with no model call, so answering never waits on anything but
+itself; `analyseSession` does all the judging in one batch once the candidate
+is done, and `finishInterview` only ever looks at `overallScore IS NOT NULL`,
+never at `status` alone, because `status` is written by application code and
+can lag behind a genuinely scored row (see D79's note on the deploy-timing
+artifact this caught).
+
 **Why retries take the max:** averaging every attempt would make the Retry
 button lower your score for using it.
 
@@ -212,10 +229,16 @@ The model declares a topic per question; code checks it against the list the
 candidate actually chose and drops anything invented. Coverage is then a number
 — shown as a chip on the question and summarised on the report.
 
+**Why difficulty is assigned by position, not by the model's own label
+(D80):** the same reasoning as the focus tag — a requested ratio in the prompt
+is a nudge, not a guarantee. `difficultyBreakdown(N)` computes the exact
+easy/medium/hard split in code and questions are stamped by their slot, so the
+distribution is correct by construction.
+
 **Why the ideal answer waits:** reading a perfect answer to question 3 and then
-answering question 4 trains recall, not thinking. It is generated immediately
-(same cost either way) and stored, but only surfaced at the end where comparing
-it to what you said is the point.
+answering question 4 trains recall, not thinking. It is generated as part of
+the end-of-session batch and stored, but only surfaced on the report where
+comparing it to what you said is the point.
 
 **How a turn ends:** silence in the *transcript*, not silence on the
 microphone. See §10.
@@ -524,9 +547,9 @@ a manual submit appear.
 | `/read` | required | Pick a tongue twister or passage |
 | `/read/[id]` | required | Read aloud; words light up as they land, result in place |
 | `/interview-prep` | required | Skills text and/or resume upload |
-| `/interview` | required | Persona, role, question count, focus technologies |
-| `/interview/[id]` | required | One question at a time, hands-free, score each |
-| `/interview/[id]/report` | required | Aggregate, coverage, every ideal answer |
+| `/interview` | required | Background on/off, persona, role, question count, focus technologies |
+| `/interview/[id]` | required | One question at a time, hands-free, transcripts saved fast; scored as a batch at the end |
+| `/interview/[id]/report` | required | Aggregate, coverage, difficulty mix, presence summary, retry-scoring, every ideal answer |
 | `/discuss` | required | GD or debate setup (renders a paywall if locked) |
 | `/discuss/[id]` | required | Live room |
 | `/rooms` | required | Conversation & scenario role-plays |

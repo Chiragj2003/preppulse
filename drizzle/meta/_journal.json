@@ -50,6 +50,13 @@
       "when": 1786736627157,
       "tag": "0006_boring_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786978046613,
+      "tag": "0007_wide_bishop",
+      "breakpoints": true
     }
   ]
 }

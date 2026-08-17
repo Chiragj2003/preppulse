@@ -44,13 +44,10 @@ export default async function InterviewRoomPage({
     );
   }
 
-  // Latest attempt per question — the room only needs to know what's answered.
-  const answered = new Map<string, { overallScore: number }>();
-  for (const answer of answers) {
-    if (!answered.has(answer.questionId)) {
-      answered.set(answer.questionId, { overallScore: answer.overallScore });
-    }
-  }
+  // The room only needs to know whether a transcript was saved for a
+  // question, not what it scored — scoring happens once, in a batch, after
+  // the whole interview is answered. See D79 in decisions.md.
+  const answeredIds = new Set(answers.map((a) => a.questionId));
 
   return (
     <InterviewRoom
@@ -63,8 +60,9 @@ export default async function InterviewRoomPage({
         position: q.position,
         question: q.question,
         kind: q.kind,
+        difficulty: q.difficulty,
         focusArea: q.focusArea,
-        answeredScore: answered.get(q.id)?.overallScore ?? null,
+        answered: answeredIds.has(q.id),
       }))}
     />
   );

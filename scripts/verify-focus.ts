@@ -39,6 +39,7 @@ async function main() {
     count: COUNT,
     role: "Backend Engineer",
     background: BACKGROUND,
+    useBackground: true,
     focusAreas: FOCUS,
   });
 
@@ -49,6 +50,7 @@ async function main() {
     count: COUNT,
     role: "Backend Engineer",
     background: BACKGROUND,
+    useBackground: true,
   });
 
   const tagged = focused.filter((q) => q.focusArea !== null).length;

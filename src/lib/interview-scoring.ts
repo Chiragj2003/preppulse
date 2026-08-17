@@ -85,3 +85,41 @@ export function aggregateScores(
 export function scoreDelta(first: number, latest: number): number {
   return latest - first;
 }
+
+/**
+ * How many easy/medium/hard questions a round of this size gets.
+ *
+ * Computed here rather than left to the model's judgement — "mix the
+ * difficulty" is exactly the kind of instruction a model interprets loosely
+ * and a candidate can't verify, and the difficulty of a round is a countable
+ * property. Roughly 40/35/25 easy/medium/hard, using the largest-remainder
+ * method so the three counts always sum to exactly `count` — no rounding
+ * drift, no "3.2 hard questions."
+ *
+ * Ties in the remainder go to the lower difficulty first, so a small round
+ * stays weighted toward approachable rather than defaulting to hard.
+ */
+export function difficultyBreakdown(count: number): { easy: number; medium: number; hard: number } {
+  if (count <= 0) return { easy: 0, medium: 0, hard: 0 };
+
+  const share = { easy: 0.4, medium: 0.35, hard: 0.25 };
+  const raw = {
+    easy: count * share.easy,
+    medium: count * share.medium,
+    hard: count * share.hard,
+  };
+  const floor = {
+    easy: Math.floor(raw.easy),
+    medium: Math.floor(raw.medium),
+    hard: Math.floor(raw.hard),
+  };
+
+  const remainder = count - (floor.easy + floor.medium + floor.hard);
+  const byLeftoverFraction = (["easy", "medium", "hard"] as const)
+    .map((tier) => ({ tier, fraction: raw[tier] - floor[tier] }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  const result = { ...floor };
+  for (let i = 0; i < remainder; i++) result[byLeftoverFraction[i].tier]++;
+  return result;
+}

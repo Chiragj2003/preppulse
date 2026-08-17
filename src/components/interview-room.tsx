@@ -3,11 +3,10 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Keyboard, Mic, RotateCcw, Square, Volume2, Sparkles } from "lucide-react";
+import { Check, Keyboard, Mic, RotateCcw, Square, Volume2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ErrorState, LoadingState } from "@/components/ui/states";
-import { Surface } from "@/components/ui/surface";
+import { ErrorState } from "@/components/ui/states";
 import { VoiceVisualizer } from "@/components/VoiceVisualizer";
 import { PresenceMonitor } from "@/components/presence-monitor";
 import { usePresence } from "@/lib/usePresence";
@@ -15,11 +14,12 @@ import { useVoiceSession } from "@/lib/useVoiceSession";
 import {
   MAX_ANSWER_SECONDS,
   PERSONA_LABELS,
+  type Difficulty,
   type InterviewerPersona,
   type QuestionKind,
 } from "@/lib/types";
 import { formatDuration } from "@/lib/utils";
-import { finishInterview, submitAnswer } from "@/app/interview/actions";
+import { analyseSession, finishInterview, submitTranscript } from "@/app/interview/actions";
 
 /**
  * A pause this long ends your answer.
@@ -37,18 +37,28 @@ const MIN_ANSWER_WORDS = 10;
 /** Warn from here, so the cut-off is never a surprise. */
 const WARN_FROM_SECONDS = MAX_ANSWER_SECONDS - 60;
 
+/** How long the "Saved" beat holds before auto-advancing to the next question. */
+const SAVED_PAUSE_MS = 700;
+
 interface Question {
   id: string;
   position: number;
   question: string;
   kind: QuestionKind;
+  difficulty: Difficulty;
   /** The technology this question tests, when the candidate asked for one. */
   focusArea: string | null;
-  answeredScore: number | null;
+  /** Has any transcript been saved for this question, regardless of score. */
+  answered: boolean;
 }
 
-type Verdict = Awaited<ReturnType<typeof submitAnswer>>;
-type Phase = "asking" | "answering" | "scoring" | "verdict" | "failed";
+type Phase = "asking" | "answering" | "saved" | "analyzing" | "failed";
+
+const DIFFICULTY_LABEL: Record<Difficulty, string> = {
+  easy: "Easy",
+  medium: "Medium",
+  hard: "Hard",
+};
 
 function playChime(frequency = 880, durationMs = 120) {
   try {
@@ -87,25 +97,23 @@ export function InterviewRoom({
 
   const firstUnanswered = Math.max(
     0,
-    questions.findIndex((q) => q.answeredScore === null),
+    questions.findIndex((q) => !q.answered),
   );
-  const [index, setIndex] = useState(firstUnanswered === -1 ? 0 : firstUnanswered);
+  const allAnsweredOnLoad = firstUnanswered === -1;
+  const [index, setIndex] = useState(allAnsweredOnLoad ? questions.length - 1 : firstUnanswered);
   const [phase, setPhase] = useState<Phase>("asking");
-  const [verdict, setVerdict] = useState<Extract<Verdict, { ok: true }>["data"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [typedMode, setTypedMode] = useState(false);
-  const [scores, setScores] = useState<Record<string, number>>(() =>
-    Object.fromEntries(
-      questions.filter((q) => q.answeredScore !== null).map((q) => [q.id, q.answeredScore!]),
-    ),
+  const [answeredIds, setAnsweredIds] = useState<Set<string>>(
+    () => new Set(questions.filter((q) => q.answered).map((q) => q.id)),
   );
-  const [average, setAverage] = useState<number | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
   const question = questions[index];
-  const answeredCount = Object.keys(scores).length;
+  const answeredCount = answeredIds.size;
+  const allAnswered = answeredCount >= questions.length;
   const startedAtRef = useRef(0);
 
   // The room hands the turn over on a pause, which means the callback fires
@@ -114,14 +122,27 @@ export function InterviewRoom({
   // transcript again here would find it already cleared.
   const sendRef = useRef<(spokenText?: string) => void>(() => {});
 
-  // Opt-in and off by default. It costs a camera permission and a megabyte of
-  // model, and plenty of people practise somewhere they would rather not be
-  // filmed — so it is offered, never assumed.
+  // Opt-in and off by default. Tracks the WHOLE interview as one continuous
+  // recording rather than restarting per question — both because a candidate
+  // shouldn't have to re-grant camera access every answer, and because
+  // restarting the underlying <video> element each question was the actual
+  // bug behind "the camera stops working": see the always-mounted monitor
+  // below.
   const presence = usePresence();
-  // Pulled out because `presence` is a fresh object each render while its
-  // callbacks are stable — putting the object in the dependency array below
-  // would rebuild `send` on every render and memoise nothing.
-  const { endRecording: endPresenceRecording } = presence;
+  const presenceStartedRef = useRef(false);
+  const { status: presenceStatus, start: startPresence, beginRecording: beginPresenceRecording, endRecording: endPresenceRecording } = presence;
+
+  // Recording begins the moment tracking actually begins, not when the
+  // candidate happens to click "Answer this" — those are two different
+  // events and gating on the second is racy against the first, which is
+  // async (camera permission, then the face model, then the stream). One
+  // continuous recording from here to `finishAndAnalyze`'s endRecording.
+  useEffect(() => {
+    if (presenceStatus === "tracking" && !presenceStartedRef.current) {
+      presenceStartedRef.current = true;
+      beginPresenceRecording();
+    }
+  }, [presenceStatus, beginPresenceRecording]);
 
   const voiceSession = useVoiceSession({
     sessionId,
@@ -163,6 +184,36 @@ export function InterviewRoom({
     }
   }, [phase, question?.id, typedMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Runs the analysis + completion pair once every question has a saved
+   * transcript. Split into two server calls (score everything, then close
+   * out) rather than one, so a failure after scoring nine of ten answers
+   * still leaves those nine scored — retrying re-enters at `analyseSession`,
+   * which only touches what's still unscored, not from zero.
+   */
+  const finishAndAnalyze = useCallback(async () => {
+    setPhase("analyzing");
+    setError(null);
+
+    const presenceSummary = endPresenceRecording() ?? undefined;
+
+    const scoring = await analyseSession(sessionId);
+    if (!scoring.ok) {
+      setError(scoring.error.message);
+      setPhase("failed");
+      return;
+    }
+
+    const result = await finishInterview(sessionId, presenceSummary);
+    if (!result.ok) {
+      setError(result.error.message);
+      setPhase("failed");
+      return;
+    }
+
+    router.push(`/interview/${sessionId}/report`);
+  }, [sessionId, router, endPresenceRecording]);
+
   const send = useCallback(
     async (spokenText?: string) => {
       const text = (
@@ -190,16 +241,15 @@ export function InterviewRoom({
       }
 
       voiceSession.stopSession();
-      endPresenceRecording();
       setHint(null);
-      setPhase("scoring");
       setError(null);
 
       const seconds = startedAtRef.current
         ? Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
         : Math.max(1, elapsed);
 
-      const result = await submitAnswer({
+      // Fast: no model call happens here. See submitTranscript.
+      const result = await submitTranscript({
         sessionId,
         questionId: question.id,
         transcript: text,
@@ -213,20 +263,30 @@ export function InterviewRoom({
         return;
       }
 
-      setVerdict(result.data);
-      setScores((prev) => ({
-        ...prev,
-        [question.id]: Math.max(prev[question.id] ?? 0, result.data.overallScore),
-      }));
-      setAverage(result.data.runningAverage);
-      setPhase("verdict");
+      const nextAnsweredIds = new Set(answeredIds);
+      nextAnsweredIds.add(question.id);
+      setAnsweredIds(nextAnsweredIds);
+      setPhase("saved");
 
-      if (!typedMode) {
-        playChime(440, 150);
-        voiceSession.speakResponse(result.data.feedback, "interviewer");
-      }
+      const isLastUnanswered = nextAnsweredIds.size >= questions.length;
+
+      window.setTimeout(() => {
+        if (isLastUnanswered) {
+          void finishAndAnalyze();
+          return;
+        }
+        // Advance to the next question the candidate hasn't answered yet,
+        // rather than always index+1 — someone who used "End here" earlier in
+        // the list and came back can still be filling gaps out of order.
+        const next = questions.findIndex((q) => !nextAnsweredIds.has(q.id));
+        setIndex(next === -1 ? index : next);
+        voiceSession.speech.reset();
+        setElapsed(0);
+        startedAtRef.current = 0;
+        setPhase("asking");
+      }, SAVED_PAUSE_MS);
     },
-    [elapsed, question?.id, sessionId, typedMode, voiceSession, endPresenceRecording],
+    [elapsed, question?.id, sessionId, typedMode, voiceSession, answeredIds, questions, index, finishAndAnalyze],
   );
 
   // The voice session calls back through this ref, so it always reaches the
@@ -240,41 +300,19 @@ export function InterviewRoom({
     setError(null);
     startedAtRef.current = Date.now();
     setPhase("answering");
-    presence.beginRecording();
     void voiceSession.startSession();
   }
 
-  function goNext() {
-    if (index < questions.length - 1) {
-      voiceSession.stopSession();
-      setIndex(index + 1);
-      voiceSession.speech.reset();
-      setVerdict(null);
-      setElapsed(0);
-      setHint(null);
-      startedAtRef.current = 0;
-      setPhase("asking");
-    }
-  }
-
-  async function complete() {
+  async function endHere() {
     voiceSession.stopSession();
     setFinishing(true);
-    const result = await finishInterview(sessionId);
-    if (result.ok) {
-      router.push(`/interview/${sessionId}/report`);
-    } else {
-      setFinishing(false);
-      setError(result.error.message);
-      setPhase("failed");
-    }
+    await finishAndAnalyze();
+    setFinishing(false);
   }
-
-  const allAnswered = answeredCount >= questions.length;
 
   return (
     <div className="mx-auto max-w-3xl px-5 pt-24 pb-24 sm:px-6">
-      {/* Rail: position, persona, running average */}
+      {/* Rail: position, persona */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="t-micro">
           {PERSONA_LABELS[persona]}
@@ -288,15 +326,7 @@ export function InterviewRoom({
             <span>Structured Interview Flow</span>
           </span>
 
-          <p className="t-micro">
-            {answeredCount} of {questions.length} answered
-            {average !== null && (
-              <>
-                <span className="mx-3 text-ink-4">/</span>
-                <span className="text-accent">avg {average}</span>
-              </>
-            )}
-          </p>
+          <p className="t-micro">{answeredCount} of {questions.length} answered</p>
         </div>
       </div>
 
@@ -307,278 +337,249 @@ export function InterviewRoom({
             key={q.id}
             className="h-0.5 flex-1 rounded-full transition-colors duration-500"
             style={{
-              background:
-                scores[q.id] !== undefined
-                  ? "var(--color-accent)"
-                  : i === index
-                    ? "var(--color-ink-4)"
-                    : "var(--color-line)",
+              background: answeredIds.has(q.id)
+                ? "var(--color-accent)"
+                : i === index
+                  ? "var(--color-ink-4)"
+                  : "var(--color-line)",
             }}
           />
         ))}
       </div>
 
-      {/* Question Header */}
-      <motion.div
-        key={question.id}
-        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-        className="mt-12"
-      >
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <p className="t-micro">
-            Question {index + 1}
-            <span className="mx-3 text-ink-4">/</span>
-            <span className="text-ink-2">{question.kind}</span>
-          </p>
-          {question.focusArea && (
-            <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[12px] font-medium text-accent">
-              {question.focusArea}
-            </span>
-          )}
-          <button
-            type="button"
-            className="pressable text-ink-4 hover:text-ink-2"
-            onClick={() => voiceSession.speakResponse(question.question, "interviewer")}
-            aria-label="Read question aloud"
-          >
-            <Volume2 className="size-3.5" />
-          </button>
-        </div>
-        <h1 className="t-title max-w-2xl">{question.question}</h1>
-      </motion.div>
-
-      {/* Body */}
-      <div className="mt-10">
-        {phase === "asking" && (
-          <div className="flex flex-wrap items-center gap-5">
-            <Button
-              variant="primary"
-              size="lg"
-              icon={<Mic className="size-4.5" />}
-              onClick={beginAnswering}
-            >
-              Answer this
-            </Button>
-            {scores[question.id] !== undefined && (
-              <p className="t-meta text-ink-4">
-                Already answered — scored {scores[question.id]}. Answering again keeps the better one.
-              </p>
-            )}
-          </div>
-        )}
-
-        {phase === "answering" && (
-          <div>
-            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 mb-6">
-              <span className="t-numeric text-[34px] leading-none">{formatDuration(elapsed)}</span>
-              <p className="t-meta text-ink-4">
-                {elapsed >= WARN_FROM_SECONDS ? (
-                  <span style={{ color: "var(--color-caution)" }}>
-                    Wrapping up in {formatDuration(MAX_ANSWER_SECONDS - elapsed)} — finish your point.
-                  </span>
-                ) : typedMode ? (
-                  "Submit when you're done."
-                ) : (
-                  "Just stop talking when you're finished. Pausing hands it over."
-                )}
-              </p>
-            </div>
-
-            {!typedMode ? (
-              /* No stop control. The whole point is that you answer and stop,
-                 the way you would to a person — a "done answering" button
-                 turns every pause into a decision about whether to reach for
-                 the mouse. The manual submit below appears only if the
-                 recogniser can't run, which is the one case where stopping
-                 cannot be detected. */
-              <VoiceVisualizer
-                status={voiceSession.status}
-                audioLevel={voiceSession.audioLevel}
-                transcript={voiceSession.transcript}
-                isMicActive={voiceSession.isMicActive}
-                isSpeaking={voiceSession.isSpeaking}
-                counterpartName={PERSONA_LABELS[persona]}
-              />
-            ) : (
-              <div className="mt-8">
-                <textarea
-                  value={voiceSession.speech.typed}
-                  onChange={(e) => voiceSession.speech.setTyped(e.target.value)}
-                  rows={8}
-                  placeholder="Type your answer..."
-                  className="t-lead w-full resize-y rounded-[var(--radius-md)] border border-line bg-black/25 p-6 text-ink outline-none placeholder:text-ink-4 focus:border-accent"
-                />
-                <div className="mt-5">
-                  <Button
-                    variant="primary"
-                    icon={<Square className="size-3.5 fill-current" />}
-                    onClick={() => void send()}
-                  >
-                    Submit answer
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {!typedMode && !voiceSession.canAutoSend && (
-              <div className="mt-6">
-                <p className="t-meta mb-3 text-ink-2">
-                  Your browser can&apos;t hand the turn over on its own, so send it manually.
-                </p>
-                <Button
-                  variant="glass"
-                  icon={<Square className="size-3.5 fill-current" />}
-                  onClick={() => void send()}
-                >
-                  Done answering
-                </Button>
-              </div>
-            )}
-
-            {hint && <p className="t-meta mt-5 text-ink-2">{hint}</p>}
-
-            {!typedMode && (
-              <div className="mt-6">
-                <PresenceMonitor
-                  videoRef={presence.videoRef}
-                  status={presence.status}
-                  live={presence.live}
-                  summary={null}
-                  onStart={() => {
-                    void (async () => {
-                      await presence.start();
-                      presence.beginRecording();
-                    })();
-                  }}
-                  onStop={presence.stop}
-                />
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setTypedMode((v) => !v)}
-              className="pressable mt-6 inline-flex items-center gap-2 text-[13px] text-ink-4 hover:text-ink-2"
-            >
-              <Keyboard className="size-3.5" />
-              {typedMode ? "Use microphone" : "Type answer instead"}
-            </button>
-
-            {voiceSession.errorMessage && (
-              <p className="t-meta mt-5 text-ink-2">{voiceSession.errorMessage}</p>
-            )}
-          </div>
-        )}
-
-        {phase === "scoring" && (
-          <LoadingState
-            title="Reading that answer"
-            detail="Checking substance, clarity, relevance and structure."
-          />
-        )}
-
-        {phase === "failed" && (
-          <ErrorState
-            message={error ?? "Something went wrong."}
-            onRetry={() => void send()}
-            retryLabel="Try scoring again"
-          />
-        )}
-
-        {phase === "verdict" && verdict && (
+      {phase !== "analyzing" && phase !== "failed" && question && (
+        <>
+          {/* Question Header */}
           <motion.div
+            key={question.id}
             initial={reduceMotion ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+            className="mt-12"
           >
-            <Surface material="dense" radius="lg" refract className="p-7 sm:p-9">
-              <div className="flex items-start justify-between gap-6">
-                <p className="t-lead max-w-lg text-ink">{verdict.feedback}</p>
-                <div className="shrink-0 text-right">
-                  <p className="t-numeric text-[40px] leading-none">{verdict.overallScore}</p>
-                  {verdict.delta !== null && (
-                    <p
-                      className="t-micro mt-2"
-                      style={{
-                        color:
-                          verdict.delta > 0
-                            ? "var(--color-positive)"
-                            : verdict.delta < 0
-                              ? "var(--color-caution)"
-                              : undefined,
-                      }}
-                    >
-                      {verdict.delta > 0 ? "+" : ""}
-                      {verdict.delta} vs first
-                    </p>
-                  )}
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center gap-3 mb-5">
+              <p className="t-micro">
+                Question {index + 1}
+                <span className="mx-3 text-ink-4">/</span>
+                <span className="text-ink-2">{question.kind}</span>
+              </p>
+              <span
+                className="rounded-full border px-2.5 py-0.5 text-[12px] font-medium"
+                style={{
+                  borderColor:
+                    question.difficulty === "hard"
+                      ? "color-mix(in oklch, var(--color-caution) 40%, transparent)"
+                      : "var(--color-line)",
+                  background:
+                    question.difficulty === "hard"
+                      ? "color-mix(in oklch, var(--color-caution) 12%, transparent)"
+                      : "transparent",
+                  color: question.difficulty === "hard" ? "var(--color-caution)" : "var(--color-ink-3)",
+                }}
+              >
+                {DIFFICULTY_LABEL[question.difficulty]}
+              </span>
+              {question.focusArea && (
+                <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[12px] font-medium text-accent">
+                  {question.focusArea}
+                </span>
+              )}
+              <button
+                type="button"
+                className="pressable text-ink-4 hover:text-ink-2"
+                onClick={() => voiceSession.speakResponse(question.question, "interviewer")}
+                aria-label="Read question aloud"
+              >
+                <Volume2 className="size-3.5" />
+              </button>
+            </div>
+            <h1 className="t-title max-w-2xl">{question.question}</h1>
+          </motion.div>
 
-              <div className="mt-8 grid gap-8 sm:grid-cols-2">
-                <Notes title="Worked" items={verdict.strengths} accent="var(--color-positive)" />
-                <Notes title="Fix" items={verdict.improvements} accent="var(--color-caution)" />
-              </div>
-            </Surface>
-
-            {presence.summary && presence.summary.samples > 0 && (
-              <div className="mt-4">
-                <PresenceMonitor
-                  videoRef={presence.videoRef}
-                  status={presence.status}
-                  live={presence.live}
-                  summary={presence.summary}
-                  onStart={() => void presence.start()}
-                  onStop={presence.stop}
-                />
+          {/* Body */}
+          <div className="mt-10">
+            {phase === "asking" && (
+              <div className="flex flex-wrap items-center gap-5">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  icon={<Mic className="size-4.5" />}
+                  onClick={beginAnswering}
+                >
+                  Answer this
+                </Button>
               </div>
             )}
 
-            {/* The model answer is deliberately withheld until the report.
-                Reading a perfect answer to question 3 and then answering
-                question 4 is how you end up practising recall instead of
-                thinking — you unconsciously reach for the phrasing you just
-                read. It's all waiting at the end, question by question, where
-                comparing it to what you actually said is the point. */}
-            <p className="t-meta mt-4 text-ink-4">
-              A model answer to this one is saved for the report at the end.
-            </p>
+            {phase === "answering" && (
+              <div>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 mb-6">
+                  <span className="t-numeric text-[34px] leading-none">{formatDuration(elapsed)}</span>
+                  <p className="t-meta text-ink-4">
+                    {elapsed >= WARN_FROM_SECONDS ? (
+                      <span style={{ color: "var(--color-caution)" }}>
+                        Wrapping up in {formatDuration(MAX_ANSWER_SECONDS - elapsed)} — finish your point.
+                      </span>
+                    ) : typedMode ? (
+                      "Submit when you're done."
+                    ) : (
+                      "Just stop talking when you're finished. Pausing hands it over."
+                    )}
+                  </p>
+                </div>
 
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Button variant="glass" icon={<RotateCcw className="size-4" />} onClick={beginAnswering}>
-                Retry this answer
-              </Button>
+                {!typedMode ? (
+                  /* No stop control. The whole point is that you answer and
+                     stop, the way you would to a person — a "done answering"
+                     button turns every pause into a decision about whether
+                     to reach for the mouse. The manual submit below appears
+                     only if the recogniser can't run, which is the one case
+                     where stopping cannot be detected. */
+                  <VoiceVisualizer
+                    status={voiceSession.status}
+                    audioLevel={voiceSession.audioLevel}
+                    transcript={voiceSession.transcript}
+                    isMicActive={voiceSession.isMicActive}
+                    isSpeaking={voiceSession.isSpeaking}
+                    counterpartName={PERSONA_LABELS[persona]}
+                  />
+                ) : (
+                  <div className="mt-8">
+                    <textarea
+                      value={voiceSession.speech.typed}
+                      onChange={(e) => voiceSession.speech.setTyped(e.target.value)}
+                      rows={8}
+                      placeholder="Type your answer..."
+                      className="t-lead w-full resize-y rounded-[var(--radius-md)] border border-line bg-black/25 p-6 text-ink outline-none placeholder:text-ink-4 focus:border-accent"
+                    />
+                    <div className="mt-5">
+                      <Button
+                        variant="primary"
+                        icon={<Square className="size-3.5 fill-current" />}
+                        onClick={() => void send()}
+                      >
+                        Submit answer
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
-              {index < questions.length - 1 ? (
-                <Button
-                  variant="primary"
-                  icon={<ArrowRight className="size-4" />}
-                  onClick={goNext}
+                {!typedMode && !voiceSession.canAutoSend && (
+                  <div className="mt-6">
+                    <p className="t-meta mb-3 text-ink-2">
+                      Your browser can&apos;t hand the turn over on its own, so send it manually.
+                    </p>
+                    <Button
+                      variant="glass"
+                      icon={<Square className="size-3.5 fill-current" />}
+                      onClick={() => void send()}
+                    >
+                      Done answering
+                    </Button>
+                  </div>
+                )}
+
+                {hint && <p className="t-meta mt-5 text-ink-2">{hint}</p>}
+
+                <button
+                  type="button"
+                  onClick={() => setTypedMode((v) => !v)}
+                  className="pressable mt-6 inline-flex items-center gap-2 text-[13px] text-ink-4 hover:text-ink-2"
                 >
-                  Next question
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  icon={<Check className="size-4" />}
-                  loading={finishing}
-                  onClick={() => void complete()}
-                >
-                  Finish and see report
-                </Button>
-              )}
+                  <Keyboard className="size-3.5" />
+                  {typedMode ? "Use microphone" : "Type answer instead"}
+                </button>
+
+                {voiceSession.errorMessage && (
+                  <p className="t-meta mt-5 text-ink-2">{voiceSession.errorMessage}</p>
+                )}
+              </div>
+            )}
+
+            {phase === "saved" && (
+              <motion.div
+                initial={reduceMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-3 text-[var(--color-positive)]"
+              >
+                <Check className="size-5" />
+                <p className="t-body">
+                  {answeredCount >= questions.length
+                    ? "That's everything — reading your answers now."
+                    : "Saved. Next question…"}
+                </p>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Presence monitor stays mounted for the whole room rather than
+              only during "answering" — swapping it in and out per question
+              used to tear down and recreate the <video> element, which
+              silently detached the live camera stream from the DOM after the
+              first question and made tracking look broken. Hidden with CSS
+              between answers instead of unmounted, so the stream survives. */}
+          {!typedMode && (
+            <div className={phase === "answering" ? "mt-6" : "mt-6 hidden"}>
+              <PresenceMonitor
+                videoRef={presence.videoRef}
+                status={presence.status}
+                live={presence.live}
+                errorDetail={presence.errorDetail}
+                onStart={() => void startPresence()}
+                onStop={presence.stop}
+              />
             </div>
-          </motion.div>
-        )}
-      </div>
+          )}
+        </>
+      )}
 
-      {answeredCount > 0 && phase !== "scoring" && !allAnswered && (
+      {phase === "analyzing" && (
+        <div className="mt-16">
+          <p className="t-micro mb-6">Reading every answer</p>
+          <div className="space-y-3">
+            {questions.map((q, i) => (
+              <div key={q.id} className="flex items-center gap-4">
+                <span className="t-numeric w-5 shrink-0 text-[13px] text-ink-4">{i + 1}</span>
+                <span className="h-2 flex-1 overflow-hidden rounded-full">
+                  <motion.span
+                    className="block h-full w-full origin-left rounded-full bg-ink-4/25"
+                    initial={{ scaleX: reduceMotion ? 0.6 : 0.08 }}
+                    animate={reduceMotion ? { scaleX: 0.6 } : { scaleX: [0.08, 0.92, 0.08] }}
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: i * 0.12 }
+                    }
+                  />
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="t-meta mt-8 text-ink-4">
+            Scoring content, clarity, relevance and structure on each answer. Usually a few
+            seconds a question.
+          </p>
+        </div>
+      )}
+
+      {phase === "failed" && (
+        <div className="mt-16">
+          <ErrorState
+            message={error ?? "Something went wrong."}
+            onRetry={() => void finishAndAnalyze()}
+            retryLabel="Try again"
+          />
+          <p className="t-meta mt-4 text-ink-4">
+            Anything already scored is safe — this only retries what didn&apos;t finish.
+          </p>
+        </div>
+      )}
+
+      {answeredCount > 0 && phase !== "analyzing" && phase !== "failed" && !allAnswered && (
         <div className="mt-16 border-t border-line pt-8">
           <button
             type="button"
-            onClick={() => void complete()}
+            onClick={() => void endHere()}
             disabled={finishing}
             className="pressable t-meta text-ink-4 hover:text-ink-2 disabled:opacity-40"
           >
@@ -586,22 +587,14 @@ export function InterviewRoom({
           </button>
         </div>
       )}
-    </div>
-  );
-}
 
-function Notes({ title, items, accent }: { title: string; items: string[]; accent: string }) {
-  return (
-    <div>
-      <p className="t-micro mb-4">{title}</p>
-      <ul className="space-y-3">
-        {items.map((item, i) => (
-          <li key={i} className="flex gap-3">
-            <span className="mt-2.5 h-px w-4 shrink-0" style={{ background: accent }} aria-hidden />
-            <p className="t-body text-ink-2">{item}</p>
-          </li>
-        ))}
-      </ul>
+      {allAnswered && phase === "asking" && (
+        <div className="mt-16 border-t border-line pt-8">
+          <Button variant="primary" icon={<RotateCcw className="size-4" />} loading={finishing} onClick={() => void endHere()}>
+            See my results
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
