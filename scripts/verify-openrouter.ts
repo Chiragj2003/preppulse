@@ -63,6 +63,9 @@ async function main() {
         prompt:
           'Reply with this exact JSON object and nothing else: {"ok": true, "reason": "via dispatcher"}',
         schema: Schema,
+        // Deliberately the "wrong" default, to prove AI_PROVIDER=openrouter
+        // (set just above) is what actually wins, not this fallback.
+        defaultProvider: "gemini",
         operation: "verify_openrouter_dispatch",
         userId: "verify-script",
       }).finally(() => {

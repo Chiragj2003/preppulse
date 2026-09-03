@@ -150,6 +150,8 @@ async function askJudge(args: { prompt: string; userId: string; sessionId: strin
     system:
       "You are a precise, encouraging communication coach. You always reply with a single valid JSON object and nothing else.",
     schema: ModelVerdict,
+    // This mode's own provider before AI_PROVIDER existed — see provider.ts.
+    defaultProvider: "groq",
     operation: "score_answer",
     userId: args.userId,
     sessionId: args.sessionId,

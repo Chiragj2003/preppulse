@@ -239,6 +239,8 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 Return ONLY JSON:
 {"questions":[{"question":string,"kind":"behavioural"|"technical"|"situational"|"motivational","rationale":string,"focusArea":string|null}]}`,
     schema: QuestionsSchema,
+    // This mode's own provider before AI_PROVIDER existed — see provider.ts.
+    defaultProvider: "gemini",
     operation: "generate_questions",
     userId: input.userId,
     sessionId: input.sessionId,
@@ -377,6 +379,8 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 Return ONLY JSON:
 {"content":number,"clarity":number,"relevance":number,"structure":number,"feedback":string,"strengths":string[],"improvements":string[],"idealAnswer":string}`,
     schema: AnswerSchema,
+    // This mode's own provider before AI_PROVIDER existed — see provider.ts.
+    defaultProvider: "gemini",
     operation: "analyse_answer",
     userId: input.userId,
     sessionId: input.sessionId,

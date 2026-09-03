@@ -69,6 +69,8 @@ async function generateBrief(promptText: string): Promise<string | null> {
 TOPIC: ${promptText}`,
       system:
         "You are a witty, insightful conversation starter. You reply ONLY with a 2-3 sentence opener, no quotes, no conversational filler.",
+      // This mode's own provider before AI_PROVIDER existed — see provider.ts.
+      defaultProvider: "groq",
       operation: "topic_brief",
       userId: "system",
       temperature: 0.7,

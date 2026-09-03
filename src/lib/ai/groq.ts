@@ -21,10 +21,18 @@ import { recordUsage } from "./usage";
  * Gemini had nothing to fall back to when it was busy: there was no shared
  * function to call, only three private ones.
  */
+/**
+ * llama-3.3-70b-versatile and llama-3.1-8b-instant, the two ids this list
+ * used to carry, are gone from Groq's own /models listing entirely as of
+ * 2026-09 — not renamed, retired. Discovered testing the AI_PROVIDER switch,
+ * not by this list catching it: `isModelUnavailable` walked both, found
+ * nothing left to walk to, and the whole Groq path failed. Verified against
+ * a real key, the same standard the rest of this file holds itself to.
+ */
 const MODELS = [
   process.env.GROQ_MODEL,
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
 ].filter((m): m is string => Boolean(m));
 
 export interface GroqCallOptions {
