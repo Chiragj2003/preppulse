@@ -943,9 +943,11 @@ Recorded here rather than silently skipped because Haiku 4.5 is genuinely cheap 
 
 ## D84. OpenRouter is a third provider, chosen by one env var, not by call site
 
-**Decision.** `AI_PROVIDER` (`gemini` | `groq` | `openrouter`, default `gemini`) picks which provider answers every judgement call — scoring, reading coaching, discussion turns, topic briefs, interview questions and interview answer analysis. `lib/ai/provider.ts` is the one place that reads it: `callAI`/`callAIText` dispatch to `callGemini`/`callGroq`/`callOpenRouter` (new: `lib/ai/openrouter.ts`, OpenRouter's OpenAI-compatible chat-completions endpoint over plain `fetch`, same shape and retry policy as `groq.ts`). Every call site that used to import a specific provider's client now imports `callAI` instead.
+**Decision.** `AI_PROVIDER` (`gemini` | `groq` | `openrouter`, **unset by default — not defaulted to any of the three**) optionally overrides which provider answers every judgement call — scoring, reading coaching, discussion turns, topic briefs, interview questions and interview answer analysis. `lib/ai/provider.ts` is the one place that reads it: `callAI`/`callAIText` dispatch to `callGemini`/`callGroq`/`callOpenRouter` (new: `lib/ai/openrouter.ts`, OpenRouter's OpenAI-compatible chat-completions endpoint over plain `fetch`, same shape and retry policy as `groq.ts`). Every call site that used to import a specific provider's client now imports `callAI` instead — but each one also passes a `defaultProvider` naming what it used before this dispatcher existed, and `env.aiProvider` only overrides that when the operator has actually set `AI_PROVIDER`.
 
 **Why one switch rather than one per call site.** D12 hard-wired Groq to score/discuss/read and Gemini to interview, for good reasons (latency for the former, PDF + long context for the latter) — but hard-wiring is exactly what makes a provider unswitchable. Centralising the choice in one dispatcher means changing `AI_PROVIDER` in `.env` moves every judgement call at once, with no per-file edits and no risk of half the app quietly staying on the old provider.
+
+**Why `AI_PROVIDER` defaults to unset rather than to `"gemini"`.** The first version of this shipped with exactly that default, reasoning that "gemini" was the safe, do-nothing choice. It wasn't: score.ts, reading.ts, discussion.ts and topic-brief.ts were never on Gemini at all before this change — they were hard-wired to Groq, for the D12 latency reasons above — so defaulting the switch to `"gemini"` silently moved all four onto Gemini for anyone who had never touched the env var. Caught by testing an actual feature function (`scoreAnswer`) end to end with a fetch spy and finding it hit `generativelanguage.googleapis.com` instead of Groq with nothing set. Fixed by making `env.aiProvider` return `undefined` when unset and requiring every call site to state its own historical `defaultProvider`, so "I haven't touched `AI_PROVIDER`" reproduces the exact pre-dispatcher behaviour and only an explicit value overrides anything.
 
 **What did NOT change: no new cross-provider fallback chain.** Choosing `groq` or `openrouter` means exactly that provider, same as before this dispatcher existed for the call sites that were always Groq-only. `callGemini`'s existing internal Groq fallback (D74) still fires when `AI_PROVIDER=gemini` and Gemini is exhausted — that behaviour predates this file and is untouched — but `openrouter` and `groq` do not fall back to each other or to Gemini. Chaining three providers together was more machinery than "let me pick one" asked for, and the existing precedent (Groq-primary call sites already had zero fallback) argued against inventing new behaviour beyond what was asked.
 
@@ -969,12 +971,17 @@ Recorded here rather than silently skipped because Haiku 4.5 is genuinely cheap 
   own generated output. Non-fatal; the production build is clean.
 - `drizzle-kit` pulls a dev-only `esbuild` advisory through deprecated
   `@esbuild-kit/*` packages. Not in the production bundle.
-- **`GROQ_API_KEY` in the local `.env` is currently invalid** — Groq's own
-  `/models` endpoint rejects it outright ("Invalid API Key"), confirmed
-  independently of any app code while verifying D84. This silently breaks two
-  things until rotated: `AI_PROVIDER=groq`, and the Gemini→Groq fallback
-  (D74) whenever Gemini is exhausted. Get a fresh key at
-  console.groq.com → API Keys.
+- `groq.ts`'s model list (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
+  was fully retired by Groq as of 2026-09, not renamed — both ids were
+  entirely absent from a real `/models` call with this project's key, which
+  meant the whole Groq path (D74's fallback, and every score/reading/
+  discussion/topic-brief call) silently exhausted its model list and failed.
+  Caught testing D84, unrelated to it, and fixed in the same pass: the list
+  now carries `openai/gpt-oss-120b` and `openai/gpt-oss-20b`, verified
+  against the real key with a live JSON-mode call before committing to them.
+  (A first look mistook this for an invalid API key — the key itself was
+  always fine; `/models` returning zero of the two configured ids just reads
+  identically to a rejected key until you check what it actually lists.)
 
 ---
 

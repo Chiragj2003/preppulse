@@ -47,18 +47,23 @@ export const env = {
   },
 
   /**
-   * Which provider judges an answer, coaches a read, or writes a persona's
-   * turn — chosen once, here, rather than per call site. See lib/ai/provider.ts.
+   * An explicit override for which provider judges an answer, coaches a read,
+   * or writes a persona's turn — undefined, not a default, when unset. See
+   * lib/ai/provider.ts: each call site already has its own historical
+   * provider (Groq for anything latency-sensitive, Gemini for the interview),
+   * and this only overrides that when the operator actually sets it. Making
+   * this default to "gemini" was tried and was wrong — it silently moved
+   * score/reading/discussion/topic-brief off Groq and onto Gemini for
+   * everyone who had never touched this variable at all.
    *
-   * Resume PDF extraction ignores this: only Gemini reads a document's bytes
-   * natively among the three, so it always calls Gemini directly regardless
-   * of what this is set to.
+   * Resume PDF extraction ignores this even when it IS set: only Gemini reads
+   * a document's bytes natively among the three.
    */
-  get aiProvider(): "gemini" | "groq" | "openrouter" {
+  get aiProvider(): "gemini" | "groq" | "openrouter" | undefined {
     const raw = optionalEnv("AI_PROVIDER");
     if (raw === "groq" || raw === "openrouter" || raw === "gemini") return raw;
-    if (raw) console.warn(`[env] AI_PROVIDER="${raw}" is not gemini/groq/openrouter — defaulting to gemini.`);
-    return "gemini";
+    if (raw) console.warn(`[env] AI_PROVIDER="${raw}" is not gemini/groq/openrouter — ignoring it.`);
+    return undefined;
   },
 
   get google() {

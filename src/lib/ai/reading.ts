@@ -77,6 +77,8 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 Return ONLY JSON:
 {"verdict":string,"pattern":string,"drill":string}`,
     schema: CoachingSchema,
+    // This mode's own provider before AI_PROVIDER existed — see provider.ts.
+    defaultProvider: "groq",
     operation: "coach_reading",
     userId: input.userId,
     sessionId: input.sessionId,

@@ -70,6 +70,8 @@ async function askJudge(args: {
     prompt: args.prompt,
     system: args.system,
     schema: ReplySchema,
+    // This mode's own provider before AI_PROVIDER existed — see provider.ts.
+    defaultProvider: "groq",
     operation: args.operation,
     userId: args.userId,
     sessionId: args.sessionId,
