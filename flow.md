@@ -588,6 +588,7 @@ npm run verify:resume     # builds a PDF by hand, checks nothing is invented
 npm run verify:interview  # scores a long rambling answer 3x (the JSON bug)
 npm run verify:focus      # proves picked technologies steer the question set
 npm run verify:retry      # stubs 503/429/401 — transient retried, permanent not
+npm run verify:openrouter # real call against the live free model, both direct and via AI_PROVIDER
 ```
 
 Tests cover the maths that decides someone's score or what they've paid for:

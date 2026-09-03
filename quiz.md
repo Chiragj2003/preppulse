@@ -25,7 +25,7 @@ means you have to stop yourself scrolling. Answer first.
 
 ## Sections
 
-92 questions in all.
+94 questions in all.
 
 | | Area | Questions |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ means you have to stop yourself scrolling. Answer first.
 | Fc | Voice & turn-taking | Fc1–Fc5 |
 | Fd | Reading & presence | Fd1–Fd7 |
 | F | Design system | F1–F5 |
-| G | Reliability & security | G1–G6 |
+| G | Reliability & security | G1–G8 |
 | H | Traps | H1–H8 |
 
 ---
@@ -1071,11 +1071,47 @@ them as capabilities would be an IDOR waiting to happen.
 
 `abandonSession` originally missed this and was fixed.
 
-### G6. Both providers walk a list of model ids. Why?
+### G6. All three providers walk a list of model ids. Why?
 
-Both retire ids without notice. `gemini-2.0-flash` already 404s on this
-project's key — verified by listing the models the key can actually see, rather
-than trusting documentation.
+They all retire or rotate ids without notice. `gemini-2.0-flash` already
+404s on this project's key — verified by listing the models the key can
+actually see, rather than trusting documentation. OpenRouter's free catalog
+turns over fastest of the three, since it's providers rotating hosted
+capacity for models nobody is paying to run.
+
+### G7. ⭐ A third provider (OpenRouter) was added. Why does switching providers not touch score.ts, discussion.ts, reading.ts, or interview.ts?
+
+Because none of them call a provider by name any more. `AI_PROVIDER` in
+`.env` (`gemini` | `groq` | `openrouter`) is read in exactly one place —
+`lib/ai/provider.ts` — and every judgement call site imports `callAI`/
+`callAIText` from there instead of reaching for `callGemini`/`callGroq`
+directly. Changing the env var moves every call at once; there is no second
+place that could be left pointing at the old provider by accident.
+
+This is a generalisation of an earlier, more rigid design (`decisions.md`
+D12) that hard-wired Groq to score/discuss/read and Gemini to interview,
+for real reasons — Groq's latency for a live room, Gemini's native PDF
+support for resume parsing. The hard-wiring is gone; the reasons for one
+call site needing something the others don't are not; see the next
+question.
+
+One thing that deliberately did **not** change: choosing `groq` or
+`openrouter` means exactly that provider, with no fallback to either of the
+other two. `callGemini`'s own internal Groq fallback (D74) still runs when
+`AI_PROVIDER=gemini`, because that logic lives inside `callGemini` itself
+and predates this switch — but the dispatcher does not chain all three
+together. That would have been more machinery than "let me pick one" asked
+for.
+
+### G8. Resume upload still only works through Gemini, whichever provider `AI_PROVIDER` names. Why doesn't `extractResume` respect the switch?
+
+Because a PDF has nowhere to go on the other two. `extractResume` sends the
+file's raw bytes as `inline_data` — Gemini reads a document natively.
+Groq's and OpenRouter's free-tier chat-completions APIs are text in, text
+out; there is no field to put PDF bytes into that either would honestly
+understand. Rather than pretend to support it and silently degrade,
+`extractResume` calls `callGemini` directly and ignores `AI_PROVIDER`
+entirely — the same refusal-over-a-dishonest-fallback reasoning as D14.
 
 Falling through on "model not found" means one retirement does not take the
 product down.

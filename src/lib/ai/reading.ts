@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { callGroq } from "./groq";
+import { callAI } from "./provider";
 import type { Language } from "@/lib/types";
 import type { ReadingMetrics } from "@/lib/reading-scoring";
 
@@ -18,8 +18,10 @@ const LANGUAGE_NOTE: Record<Language, string> = {
  * handed those numbers and asked only for the thing arithmetic cannot produce:
  * what the pattern of misses suggests the reader should work on.
  *
- * Groq rather than Gemini because this is short, structured, and wanted fast —
- * the reader is staring at a results screen. Latency matters more than depth.
+ * Routed through the configured AI_PROVIDER rather than pinned to one
+ * provider — this call is short and structured, and wanted fast (the reader
+ * is staring at a results screen), which is exactly the kind of call every
+ * provider handles fine.
  */
 const CoachingSchema = z.object({
   verdict: z.string().catch(""),
@@ -50,7 +52,7 @@ export async function coachReading(input: {
     .map((step) => `"${step.expected}" came out as "${step.heard}"`)
     .join("; ");
 
-  const result = await callGroq({
+  const result = await callAI({
     prompt: `A speaker read "${input.title}" aloud (a ${input.kind === "tongue_twister" ? "tongue twister" : "reading passage"}).
 ${input.focus ? `It drills: ${input.focus}` : ""}
 

@@ -57,6 +57,13 @@
       "when": 1786978046613,
       "tag": "0007_wide_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788454057733,
+      "tag": "0008_perfect_firestar",
+      "breakpoints": true
     }
   ]
 }
