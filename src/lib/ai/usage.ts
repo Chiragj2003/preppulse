@@ -5,7 +5,7 @@ import { estimateCostUsd } from "./pricing";
 export interface UsageRecord {
   userId: string | null;
   sessionId?: string | null;
-  provider: "groq" | "gemini";
+  provider: "groq" | "gemini" | "openrouter";
   model: string;
   /** What this call was for, e.g. "score_answer" — groups cost by feature. */
   operation: string;

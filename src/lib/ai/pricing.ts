@@ -19,6 +19,11 @@ const PRICES: Record<string, Price> = {
   // Gemini (Phase 3) — free tier bills at 0, paid tier shown for realism
   "gemini-2.0-flash": { input: 0.1, output: 0.4 },
   "gemini-2.5-flash": { input: 0.3, output: 2.5 },
+  // OpenRouter free tier — genuinely $0, not "unknown". Listed explicitly so
+  // the admin cost page shows a priced $0 rather than an unpriced dash.
+  "z-ai/glm-5.2:free": { input: 0, output: 0 },
+  "google/gemma-4-31b-it:free": { input: 0, output: 0 },
+  "minimax/minimax-m3:free": { input: 0, output: 0 },
 };
 
 export function estimateCostUsd(model: string, inputTokens: number, outputTokens: number): number {

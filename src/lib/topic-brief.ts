@@ -2,16 +2,16 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { topics } from "@/db/app-schema";
-import { callGroqText } from "@/lib/ai/groq";
+import { callAIText } from "@/lib/ai/provider";
 import { getCached, setCached } from "@/lib/redis";
 
 /**
  * Caching strategy:
  * 1. Redis cache (`brief:${topicId}`) -> return if found
  * 2. Postgres `cachedBrief` column -> populate Redis & return if found
- * 3. Groq generation -> store in Postgres, populate Redis, return
+ * 3. AI generation (whichever provider AI_PROVIDER names) -> store in Postgres, populate Redis, return
  *
- * Gracefully degrades to return null on any Redis/Groq failure.
+ * Gracefully degrades to return null on any Redis/AI failure.
  */
 export async function getTopicBrief(topicId: string, promptText: string): Promise<string | null> {
   const cacheKey = `brief:${topicId}`;
@@ -37,7 +37,7 @@ export async function getTopicBrief(topicId: string, promptText: string): Promis
     console.warn(`[topic-brief] pg select failed for ${topicId}`, error);
   }
 
-  // 3. Groq generation
+  // 3. AI generation
   const generated = await generateBrief(promptText);
   if (!generated) return null;
 
@@ -63,7 +63,7 @@ export async function getTopicBrief(topicId: string, promptText: string): Promis
  */
 async function generateBrief(promptText: string): Promise<string | null> {
   try {
-    return await callGroqText({
+    return await callAIText({
       prompt: `Generate a 2-3 sentence angle-opener for the following topic (something to get the user thinking). Keep it simple and punchy.
 
 TOPIC: ${promptText}`,

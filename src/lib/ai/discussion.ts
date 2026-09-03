@@ -3,7 +3,7 @@ import { z } from "zod";
 import { GD_PERSONAS, MODERATOR, STAGE_BRIEF, type DebateStage } from "@/lib/gd-metrics";
 import { isDeflection, isRepetitive, type Scenario } from "@/lib/scenarios";
 import type { DiscussionPersona, Language } from "@/lib/types";
-import { callGroq } from "./groq";
+import { callAI } from "./provider";
 
 const LANGUAGE_NOTE: Record<Language, string> = {
   en: "Reply in English.",
@@ -13,10 +13,10 @@ const LANGUAGE_NOTE: Record<Language, string> = {
 };
 
 /*
- * Group discussion and debate run on Groq for the same reason Phase 2 does:
- * three participants have to answer inside a couple of seconds or the room
- * stops feeling live, and latency matters more here than depth. The model list
- * itself lives in lib/ai/groq.ts.
+ * Group discussion and debate run on the configured AI_PROVIDER for the same
+ * reason Phase 2 does: three participants have to answer inside a couple of
+ * seconds or the room stops feeling live, and latency matters more here than
+ * depth. See lib/ai/provider.ts for the switch.
  */
 
 const ReplySchema = z.object({
@@ -56,16 +56,17 @@ function transcriptOf(turns: Turn[], personas: DiscussionPersona[]): string {
 
 /**
  * The model loop that used to live here is now lib/ai/groq.ts, shared with the
- * scoring engine and the topic briefs.
+ * scoring engine and the topic briefs, and reached through lib/ai/provider.ts
+ * so the actual provider is AI_PROVIDER's call, not this file's.
  */
-async function askGroq(args: {
+async function askJudge(args: {
   prompt: string;
   system: string;
   userId: string;
   sessionId: string;
   operation: string;
 }) {
-  return callGroq({
+  return callAI({
     prompt: args.prompt,
     system: args.system,
     schema: ReplySchema,
@@ -140,7 +141,7 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 Return ONLY JSON:
 {"userTurn":{"isRebuttal":boolean,"introducesArgument":boolean},"replies":[{"speaker":"<persona id>","content":string,"isRebuttal":boolean}]}`;
 
-  return askGroq({
+  return askJudge({
     prompt,
     system,
     userId: input.userId,
@@ -152,9 +153,9 @@ Return ONLY JSON:
 /**
  * Conversation and scenario role-play.
  *
- * Reuses everything: the same Groq client, the same reply schema, the same
- * turn table and room UI as group discussion. Only the counterpart and the
- * brief change.
+ * Reuses everything: the same provider dispatch, the same reply schema, the
+ * same turn table and room UI as group discussion. Only the counterpart and
+ * the brief change.
  *
  * The one addition is a re-ask. If the reply is a deflection ("tell me more")
  * or a rephrasing of something the counterpart already said, we ask once more
@@ -212,7 +213,7 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 Return ONLY JSON:
 {"userTurn":{"isRebuttal":boolean,"introducesArgument":boolean},"replies":[{"speaker":"${counterpart.id}","content":string,"isRebuttal":boolean}]}`;
 
-  let result = await askGroq({
+  let result = await askJudge({
     prompt: build(),
     system,
     userId: input.userId,
@@ -224,7 +225,7 @@ Return ONLY JSON:
 
   if (isDeflection(first) || isRepetitive(first, recentReplies)) {
     console.warn("[scenario] counterpart deflected or repeated; re-asking once");
-    result = await askGroq({
+    result = await askJudge({
       prompt: build(
         `- Your previous attempt was rejected because it ${isDeflection(first) ? "was a deflection with no content of your own" : "repeated something you already said"}. Say something genuinely new and take a position.`,
       ),
@@ -291,7 +292,7 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 Return ONLY JSON:
 {"userTurn":{"isRebuttal":boolean,"introducesArgument":boolean},"replies":[{"speaker":"opponent","content":string,"isRebuttal":boolean}]}`;
 
-  return askGroq({
+  return askJudge({
     prompt,
     system,
     userId: input.userId,

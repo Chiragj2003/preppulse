@@ -13,7 +13,7 @@ import {
   wordsPerMinute,
 } from "@/lib/scoring";
 import type { EvaluationPayload, Language } from "@/lib/types";
-import { callGroq } from "./groq";
+import { callAI } from "./provider";
 
 /** Only the judgement calls are asked of the model. Numbers we can count, we count. */
 const ModelVerdict = z.object({
@@ -105,7 +105,7 @@ export async function scoreAnswer(input: {
   const fillerScore = scoreFillerControl(totalFillers(fillerWords), wordCount);
 
   // ── Judged by the model ───────────────────────────────────────────────────
-  const verdict = await askGroq({
+  const verdict = await askJudge({
     prompt: buildPrompt(input.topic, transcript, input.language ?? "en"),
     userId: input.userId,
     sessionId: input.sessionId,
@@ -140,9 +140,12 @@ export async function scoreAnswer(input: {
  * The model loop that used to live here is now lib/ai/groq.ts, shared with the
  * discussion engine and the topic briefs — and reachable as a fallback when
  * Gemini is busy, which is the whole reason it was worth extracting.
+ *
+ * Routed through lib/ai/provider.ts rather than calling Groq by name: which
+ * provider actually answers this is AI_PROVIDER's call, not this file's.
  */
-async function askGroq(args: { prompt: string; userId: string; sessionId: string }) {
-  return callGroq({
+async function askJudge(args: { prompt: string; userId: string; sessionId: string }) {
+  return callAI({
     prompt: args.prompt,
     system:
       "You are a precise, encouraging communication coach. You always reply with a single valid JSON object and nothing else.",

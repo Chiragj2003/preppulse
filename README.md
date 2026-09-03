@@ -90,6 +90,8 @@ All secrets live in a single git-ignored `.env`. Only `DATABASE_URL`,
 | `BETTER_AUTH_SECRET` | yes | `openssl rand -base64 32` |
 | `GROQ_API_KEY` | yes (Phase 2) | console.groq.com |
 | `GEMINI_API_KEY` | Phase 3 | aistudio.google.com |
+| `OPENROUTER_API_KEY` | no | openrouter.ai → Keys — a free-tier alternative judge model |
+| `AI_PROVIDER` | no | `gemini` \| `groq` \| `openrouter` — which one judges answers. Defaults to `gemini`. Resume PDF parsing always uses Gemini regardless. |
 | `GOOGLE_CLIENT_ID` / `_SECRET` | no | Google Cloud Console — magic link works without it |
 | `RESEND_API_KEY` | no | Without it, magic links print to the dev terminal |
 | `RATE_LIMIT_PER_MINUTE` / `_PER_DAY` | no | Defaults 6 / 60 |

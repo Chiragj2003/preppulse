@@ -12,6 +12,7 @@ import type {
   ResumeExtract,
 } from "@/lib/types";
 import { callGemini, type GeminiPart } from "./gemini";
+import { callAI } from "./provider";
 
 const LANGUAGE_NOTE: Record<Language, string> = {
   en: "Reply in English.",
@@ -63,6 +64,11 @@ const ResumeSchema = z.object({
  *
  * The file itself is never persisted. Only this JSON is stored, which is both
  * the privacy position and the reason the profile row stays small.
+ *
+ * Always Gemini, regardless of AI_PROVIDER. Groq and OpenRouter's free tier
+ * are chat-completions APIs — text in, text out — with nowhere to put raw PDF
+ * bytes; only Gemini reads a document natively among the three. There is no
+ * honest fallback here, so it doesn't get a dishonest one (see gemini.ts).
  */
 export async function extractResume(input: {
   userId: string;
@@ -213,10 +219,8 @@ ${input.background.slice(0, 6000)}
 ${input.background ? `(For your own context only, never to be referenced: ${input.background.slice(0, 400)})` : ""}
 `;
 
-  const result = await callGemini({
-    parts: [
-      {
-        text: `You are conducting a mock job interview for: ${input.role}
+  const result = await callAI({
+    prompt: `You are conducting a mock job interview for: ${input.role}
 
 ${PERSONA_VOICE[input.persona]}
 
@@ -234,8 +238,6 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 
 Return ONLY JSON:
 {"questions":[{"question":string,"kind":"behavioural"|"technical"|"situational"|"motivational","rationale":string,"focusArea":string|null}]}`,
-      },
-    ],
     schema: QuestionsSchema,
     operation: "generate_questions",
     userId: input.userId,
@@ -346,10 +348,8 @@ export async function analyseAnswer(input: {
       ? "Because this is a behavioural question, the ideal answer MUST follow STAR: Situation, Task, Action, Result — with a concrete result."
       : "Give a strong model answer appropriate to the question type.";
 
-  const verdict = await callGemini({
-    parts: [
-      {
-        text: `You are assessing one answer in a mock interview for: ${input.role}
+  const verdict = await callAI({
+    prompt: `You are assessing one answer in a mock interview for: ${input.role}
 
 QUESTION (${input.kind}): ${input.question}
 
@@ -376,8 +376,6 @@ ${LANGUAGE_NOTE[input.language ?? "en"]}
 
 Return ONLY JSON:
 {"content":number,"clarity":number,"relevance":number,"structure":number,"feedback":string,"strengths":string[],"improvements":string[],"idealAnswer":string}`,
-      },
-    ],
     schema: AnswerSchema,
     operation: "analyse_answer",
     userId: input.userId,

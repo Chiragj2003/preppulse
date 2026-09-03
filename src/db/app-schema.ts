@@ -56,7 +56,7 @@ export const difficultyEnum = pgEnum("difficulty", ["easy", "medium", "hard"]);
 
 export const languageEnum = pgEnum("language", ["en", "hinglish", "hi"]);
 
-export const aiProviderEnum = pgEnum("ai_provider", ["groq", "gemini"]);
+export const aiProviderEnum = pgEnum("ai_provider", ["groq", "gemini", "openrouter"]);
 
 /** How the answer reached us. Typed answers have no measurable speaking pace. */
 export const inputModeEnum = pgEnum("input_mode", ["speech", "typed"]);

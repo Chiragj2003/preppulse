@@ -42,6 +42,24 @@ export const env = {
   get geminiApiKey() {
     return requireEnv("GEMINI_API_KEY", "Create a free key at https://aistudio.google.com → Get API Key.");
   },
+  get openrouterApiKey() {
+    return requireEnv("OPENROUTER_API_KEY", "Create a free key at https://openrouter.ai → Keys.");
+  },
+
+  /**
+   * Which provider judges an answer, coaches a read, or writes a persona's
+   * turn — chosen once, here, rather than per call site. See lib/ai/provider.ts.
+   *
+   * Resume PDF extraction ignores this: only Gemini reads a document's bytes
+   * natively among the three, so it always calls Gemini directly regardless
+   * of what this is set to.
+   */
+  get aiProvider(): "gemini" | "groq" | "openrouter" {
+    const raw = optionalEnv("AI_PROVIDER");
+    if (raw === "groq" || raw === "openrouter" || raw === "gemini") return raw;
+    if (raw) console.warn(`[env] AI_PROVIDER="${raw}" is not gemini/groq/openrouter — defaulting to gemini.`);
+    return "gemini";
+  },
 
   get google() {
     const clientId = optionalEnv("GOOGLE_CLIENT_ID");
@@ -114,6 +132,7 @@ export const env = {
       database: Boolean(optionalEnv("DATABASE_URL")),
       groq: Boolean(optionalEnv("GROQ_API_KEY")),
       gemini: Boolean(optionalEnv("GEMINI_API_KEY")),
+      openrouter: Boolean(optionalEnv("OPENROUTER_API_KEY")),
       google: Boolean(optionalEnv("GOOGLE_CLIENT_ID") && optionalEnv("GOOGLE_CLIENT_SECRET")),
       email: Boolean(optionalEnv("RESEND_API_KEY")),
     };
